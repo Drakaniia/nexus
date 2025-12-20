@@ -1,0 +1,10 @@
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[build]
+# Use native Windows command handling
+jobs = 4
+
+[env]
+# Ensure proper Windows paths
+CARGO_TARGET_DIR = "target"

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
-use slint::{Model, SharedString, VecModel, LogicalPosition};
+use slint::{Model, SharedString, VecModel, LogicalPosition, CloseRequestResponse};
 
 // Windows API imports for monitor positioning
 use windows::Win32::Foundation::POINT;
@@ -303,6 +303,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // === CREATE UI ===
     let launcher = Launcher::new()?;
+    log::info!("Launcher UI created");
+
+    // CRITICAL: Prevent window close from exiting the event loop!
+    // When user clicks X or closes the window, we just hide it instead of exiting
+    launcher.window().on_close_requested(|| {
+        log::info!("Window close requested - hiding instead of exiting");
+        // Return KeepWindowShown to tell Slint NOT to exit the event loop
+        // The window will remain "shown" from Slint's perspective but we'll hide it
+        CloseRequestResponse::KeepWindowShown
+    });
+
     let launcher_weak = launcher.as_weak();
 
     // Initialize application state with config
@@ -582,9 +593,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     launcher.set_is_visible(false);
 
     // Run the event loop
+    log::info!("=== EVENT LOOP STARTING ===");
     log::info!("WinLauncher ready. Press Alt+Space to activate. Running in system tray.");
+    log::info!("The event loop should run FOREVER until Exit is clicked in tray menu.");
+    
     slint::run_event_loop()?;
 
+    // If we get here, the event loop has exited - this should only happen when user clicks "Exit" in tray
+    log::info!("=== EVENT LOOP ENDED ===");
+    log::info!("This should ONLY appear when user explicitly exits via tray menu.");
+    
     // Cleanup
     log::info!("WinLauncher shutting down...");
     app_running.store(false, Ordering::Relaxed);

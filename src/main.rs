@@ -3,27 +3,31 @@
 
 #![windows_subsystem = "windows"]
 
-use std::collections::HashMap;
+use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 
-use fuzzy_matcher::skim::SkimMatcherV2;
-use fuzzy_matcher::FuzzyMatcher;
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
 use slint::{Model, SharedString, VecModel, Weak};
 
 slint::include_modules!();
 
-mod app_discovery;
-mod search;
 mod actions;
+mod app_discovery;
+mod config;
+mod search;
+mod single_instance;
+mod startup;
+mod tray;
+
+use config::AppConfig;
+use single_instance::SingleInstance;
+use tray::{TrayEvent, TrayManager};
 
 /// Application state
 struct LauncherState {
     apps: Vec<AppEntry>,
-    matcher: SkimMatcherV2,
-    mru: HashMap<String, u32>, // Most Recently Used tracking
+    config: AppConfig,
 }
 
 /// Represents a discovered application
@@ -43,18 +47,19 @@ pub enum AppType {
 }
 
 impl LauncherState {
-    fn new() -> Self {
+    fn new(config: AppConfig) -> Self {
         Self {
             apps: Vec::new(),
-            matcher: SkimMatcherV2::default().smart_case(),
-            mru: HashMap::new(),
+            config,
         }
     }
 
+    /// Two-tier search: prefix matching (high priority) + fuzzy matching (fallback)
     fn search(&self, query: &str) -> Vec<SearchResultData> {
         let mut results = Vec::new();
+        let query_lower = query.to_lowercase();
 
-        // Check for special prefixes
+        // Check for special prefixes first
         if let Some(action_result) = actions::check_special_query(query) {
             return vec![action_result];
         }
@@ -69,30 +74,77 @@ impl LauncherState {
             results.push(web_result);
         }
 
-        // Fuzzy search through apps
-        let mut app_matches: Vec<_> = self.apps
-            .iter()
-            .filter_map(|app| {
-                self.matcher
-                    .fuzzy_match(&app.name, query)
-                    .map(|score| (app, score))
-            })
-            .collect();
+        // === TIER 1: Prefix Matching (Highest Priority) ===
+        let mut prefix_matches: Vec<(&AppEntry, i64)> = Vec::new();
+        let mut fuzzy_only_matches: Vec<(&AppEntry, i64)> = Vec::new();
 
-        // Sort by score (higher is better) and MRU
-        app_matches.sort_by(|a, b| {
-            let mru_a = self.mru.get(&a.0.name).unwrap_or(&0);
-            let mru_b = self.mru.get(&b.0.name).unwrap_or(&0);
-            
-            // Combine fuzzy score with MRU bonus
-            let score_a = a.1 + (*mru_a as i64 * 10);
-            let score_b = b.1 + (*mru_b as i64 * 10);
-            
-            score_b.cmp(&score_a)
-        });
+        for app in &self.apps {
+            let name_lower = app.name.to_lowercase();
+            let mru_bonus = (self.config.get_mru_score(&app.name) as i64) * 10;
 
-        // Take top results
-        for (app, _score) in app_matches.into_iter().take(6) {
+            // Check if name starts with query
+            if name_lower.starts_with(&query_lower) {
+                // Exact prefix match - highest score
+                let score = 1000 + mru_bonus + (100 - name_lower.len() as i64);
+                prefix_matches.push((app, score));
+                continue;
+            }
+
+            // Check if any word starts with query
+            let words: Vec<&str> = name_lower.split_whitespace().collect();
+            let mut word_match = false;
+            for word in &words {
+                if word.starts_with(&query_lower) {
+                    let score = 800 + mru_bonus;
+                    prefix_matches.push((app, score));
+                    word_match = true;
+                    break;
+                }
+            }
+
+            if word_match {
+                continue;
+            }
+
+            // Check initials match (e.g., "vsc" matches "Visual Studio Code")
+            if query.len() >= 2 {
+                let initials: String = words
+                    .iter()
+                    .filter_map(|w| w.chars().next())
+                    .collect();
+                if initials.starts_with(&query_lower) {
+                    let score = 700 + mru_bonus;
+                    prefix_matches.push((app, score));
+                    continue;
+                }
+            }
+
+            // === TIER 2: Fuzzy Matching (Fallback) ===
+            // Check if query is a subsequence of name
+            if is_subsequence(&query_lower, &name_lower) {
+                let score = 300 + mru_bonus;
+                fuzzy_only_matches.push((app, score));
+            } else if name_lower.contains(&query_lower) {
+                // Substring match
+                let score = 200 + mru_bonus;
+                fuzzy_only_matches.push((app, score));
+            }
+        }
+
+        // Sort prefix matches by score
+        prefix_matches.sort_by(|a, b| b.1.cmp(&a.1));
+        
+        // Sort fuzzy matches by score
+        fuzzy_only_matches.sort_by(|a, b| b.1.cmp(&a.1));
+
+        // Combine: prefix matches first, then fuzzy matches
+        let max_results = self.config.appearance.max_results;
+        let mut app_count = 0;
+
+        for (app, _score) in prefix_matches.into_iter() {
+            if app_count >= max_results {
+                break;
+            }
             results.push(SearchResultData {
                 name: app.name.clone(),
                 description: app.description.clone(),
@@ -102,14 +154,49 @@ impl LauncherState {
                     AppType::File => "file".to_string(),
                 },
             });
+            app_count += 1;
+        }
+
+        // Add fuzzy matches if we have room
+        for (app, _score) in fuzzy_only_matches.into_iter() {
+            if app_count >= max_results {
+                break;
+            }
+            results.push(SearchResultData {
+                name: app.name.clone(),
+                description: app.description.clone(),
+                path: app.path.clone(),
+                result_type: match app.app_type {
+                    AppType::DesktopApp | AppType::UwpApp => "app".to_string(),
+                    AppType::File => "file".to_string(),
+                },
+            });
+            app_count += 1;
         }
 
         results
     }
 
     fn record_usage(&mut self, name: &str) {
-        *self.mru.entry(name.to_string()).or_insert(0) += 1;
+        self.config.record_usage(name);
     }
+}
+
+/// Check if pattern is a subsequence of text
+fn is_subsequence(pattern: &str, text: &str) -> bool {
+    let mut pattern_chars = pattern.chars().peekable();
+    
+    for ch in text.chars() {
+        if let Some(&p) = pattern_chars.peek() {
+            if ch == p {
+                pattern_chars.next();
+            }
+        } else {
+            return true;
+        }
+    }
+    
+    pattern_chars.peek().is_none()
 }
 
 /// Search result data for passing between Rust and Slint
@@ -140,13 +227,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     log::info!("Starting WinLauncher...");
 
-    // Create the Slint UI
+    // === SINGLE INSTANCE CHECK (must be first!) ===
+    let _instance_lock = match SingleInstance::acquire() {
+        Ok(lock) => {
+            log::info!("Single instance lock acquired");
+            lock
+        }
+        Err(e) => {
+            log::info!("Another instance is running: {}", e);
+            return Ok(()); // Exit gracefully - other instance will show
+        }
+    };
+
+    // === LOAD CONFIGURATION ===
+    let mut config = AppConfig::load();
+    
+    // First run setup
+    if config.is_first_run() {
+        log::info!("First run detected - registering startup");
+        if config.startup.enabled {
+            if let Err(e) = startup::enable_startup() {
+                log::warn!("Failed to enable startup: {}", e);
+            }
+        }
+        config.complete_first_run();
+    }
+
+    // === CREATE SYSTEM TRAY ===
+    let tray = TrayManager::new()?;
+    log::info!("System tray created");
+
+    // === CREATE UI ===
     let launcher = Launcher::new()?;
     let launcher_weak = launcher.as_weak();
 
-    // Initialize application state
-    let state = Arc::new(Mutex::new(LauncherState::new()));
+    // Initialize application state with config
+    let state = Arc::new(Mutex::new(LauncherState::new(config)));
     let current_results: Arc<Mutex<Vec<SearchResultData>>> = Arc::new(Mutex::new(Vec::new()));
+    
+    // Flag to control app running state
+    let app_running = Arc::new(AtomicBool::new(true));
 
     // Discover installed applications in background
     {
@@ -172,10 +292,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Handle hotkey events
     let launcher_weak_hotkey = launcher_weak.clone();
     let receiver = GlobalHotKeyEvent::receiver();
+    let app_running_hotkey = Arc::clone(&app_running);
     
     std::thread::spawn(move || {
         loop {
-            if let Ok(event) = receiver.recv() {
+            if !app_running_hotkey.load(Ordering::Relaxed) {
+                break;
+            }
+            
+            if let Ok(event) = receiver.recv_timeout(std::time::Duration::from_millis(100)) {
                 if event.id == hotkey_id && event.state == HotKeyState::Pressed {
                     let _ = launcher_weak_hotkey.upgrade_in_event_loop(move |launcher| {
                         let is_visible = launcher.get_is_visible();
@@ -191,6 +316,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     });
                 }
             }
+        }
+    });
+
+    // Handle tray events
+    let launcher_weak_tray = launcher_weak.clone();
+    let app_running_tray = Arc::clone(&app_running);
+    let state_for_tray = Arc::clone(&state);
+    
+    std::thread::spawn(move || {
+        loop {
+            if !app_running_tray.load(Ordering::Relaxed) {
+                break;
+            }
+            
+            if let Some(event) = tray.check_events() {
+                match event {
+                    TrayEvent::Show | TrayEvent::LeftClick => {
+                        let _ = launcher_weak_tray.upgrade_in_event_loop(|launcher| {
+                            launcher.invoke_clear_search();
+                            launcher.show().ok();
+                            launcher.set_is_visible(true);
+                            launcher.invoke_focus_input();
+                        });
+                    }
+                    TrayEvent::Settings => {
+                        // Open settings window (placeholder - opens config file location)
+                        if let Some(path) = AppConfig::config_path() {
+                            if let Some(dir) = path.parent() {
+                                let _ = open::that(dir);
+                            }
+                        }
+                    }
+                    TrayEvent::Exit => {
+                        log::info!("Exit requested from tray");
+                        app_running_tray.store(false, Ordering::Relaxed);
+                        
+                        // Save config before exit
+                        if let Ok(state) = state_for_tray.lock() {
+                            state.config.save();
+                        }
+                        
+                        let _ = launcher_weak_tray.upgrade_in_event_loop(|launcher| {
+                            launcher.hide().ok();
+                            slint::quit_event_loop().ok();
+                        });
+                    }
+                }
+            }
+            
+            std::thread::sleep(std::time::Duration::from_millis(50));
         }
     });
 
@@ -254,7 +429,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         _ => {}
                     }
 
-                    // Hide the launcher
+                    // Hide the launcher (but keep running in background!)
                     let _ = launcher_weak.upgrade_in_event_loop(|launcher| {
                         launcher.hide().ok();
                         launcher.set_is_visible(false);
@@ -264,7 +439,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Handle escape key
+    // Handle escape key - hide window but DON'T exit
     {
         let launcher_weak = launcher_weak.clone();
         launcher.on_escape_pressed(move || {
@@ -305,9 +480,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let current_results = Arc::clone(&current_results);
         let launcher_weak = launcher_weak.clone();
+        let app_running_ui = Arc::clone(&app_running);
         
         std::thread::spawn(move || {
             loop {
+                if !app_running_ui.load(Ordering::Relaxed) {
+                    break;
+                }
+                
                 std::thread::sleep(std::time::Duration::from_millis(50));
                 
                 if let Ok(results) = current_results.lock() {
@@ -326,8 +506,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     launcher.set_is_visible(false);
 
     // Run the event loop
-    log::info!("WinLauncher ready. Press Alt+Space to activate.");
+    log::info!("WinLauncher ready. Press Alt+Space to activate. Running in system tray.");
     slint::run_event_loop()?;
+
+    // Cleanup
+    log::info!("WinLauncher shutting down...");
+    app_running.store(false, Ordering::Relaxed);
 
     Ok(())
 }

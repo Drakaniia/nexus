@@ -8,7 +8,14 @@ use std::path::PathBuf;
 
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
-use slint::{Model, SharedString, VecModel};
+use slint::{Model, SharedString, VecModel, LogicalPosition};
+
+// Windows API imports for monitor positioning
+use windows::Win32::Foundation::POINT;
+use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+use windows::Win32::Graphics::Gdi::{
+    MonitorFromPoint, GetMonitorInfoW, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+};
 
 slint::include_modules!();
 
@@ -219,6 +226,43 @@ impl From<&SearchResultData> for SearchResult {
     }
 }
 
+/// Get the center position for the launcher window on the monitor where the cursor is located.
+/// Returns a LogicalPosition for use with Slint's set_position method.
+fn get_window_center_position() -> LogicalPosition {
+    const WINDOW_WIDTH: i32 = 680;
+    const WINDOW_HEIGHT: i32 = 200; // Approximate height
+
+    unsafe {
+        // Get cursor position
+        let mut cursor_pos = POINT { x: 0, y: 0 };
+        if GetCursorPos(&mut cursor_pos).is_ok() {
+            // Get the monitor where the cursor is located
+            let hmonitor = MonitorFromPoint(cursor_pos, MONITOR_DEFAULTTONEAREST);
+            
+            let mut monitor_info = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
+            
+            if GetMonitorInfoW(hmonitor, &mut monitor_info).as_bool() {
+                let work_area = monitor_info.rcWork;
+                let monitor_width = work_area.right - work_area.left;
+                let monitor_height = work_area.bottom - work_area.top;
+                
+                let x = work_area.left + (monitor_width - WINDOW_WIDTH) / 2;
+                let y = work_area.top + (monitor_height - WINDOW_HEIGHT) / 3; // Upper third for better UX
+                
+                log::debug!("Window position: ({}, {}) on monitor at ({}, {})", x, y, work_area.left, work_area.top);
+                return LogicalPosition::new(x as f32, y as f32);
+            }
+        }
+        
+        // Fallback to screen center (primary monitor)
+        log::debug!("Using fallback screen center");
+        LogicalPosition::new(400.0, 200.0)
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
     env_logger::Builder::from_env(
@@ -302,16 +346,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if let Ok(event) = receiver.recv_timeout(std::time::Duration::from_millis(100)) {
                 if event.id == hotkey_id && event.state == HotKeyState::Pressed {
+                    // Get window position BEFORE upgrading to event loop (avoid blocking main thread)
+                    let position = get_window_center_position();
+                    log::info!("Alt+Space pressed, centering window at ({}, {})", position.x, position.y);
+                    
                     let _ = launcher_weak_hotkey.upgrade_in_event_loop(move |launcher| {
                         let is_visible = launcher.get_is_visible();
                         if is_visible {
                             launcher.hide().ok();
                             launcher.set_is_visible(false);
+                            log::debug!("Window hidden");
                         } else {
-                            launcher.invoke_clear_search();
+                            // Position window first using Slint's built-in method
+                            launcher.window().set_position(position);
+                            
+                            // Show the window
                             launcher.show().ok();
                             launcher.set_is_visible(true);
+                            
+                            // Clear search and focus input
+                            launcher.invoke_clear_search();
+                            launcher.set_selected_index(0);
                             launcher.invoke_focus_input();
+                            log::debug!("Window shown and focused");
                         }
                     });
                 }
@@ -334,10 +391,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match check_tray_event() {
                 TrayEvent::Show => {
                     log::info!("Tray: Show clicked");
-                    let _ = launcher_weak_tray.upgrade_in_event_loop(|launcher| {
-                        launcher.invoke_clear_search();
+                    // Get window position before upgrading
+                    let position = get_window_center_position();
+                    
+                    let _ = launcher_weak_tray.upgrade_in_event_loop(move |launcher| {
+                        // Position window first using Slint's built-in method
+                        launcher.window().set_position(position);
+                        
+                        // Show the window
                         launcher.show().ok();
                         launcher.set_is_visible(true);
+                        
+                        launcher.invoke_clear_search();
+                        launcher.set_selected_index(0);
                         launcher.invoke_focus_input();
                     });
                 }
@@ -359,31 +425,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // Handle search input changes
+    // Handle search input changes - UPDATE UI IMMEDIATELY (Fix for Issue #1)
     {
         let state = Arc::clone(&state);
         let current_results = Arc::clone(&current_results);
+        let launcher_weak_search = launcher_weak.clone();
+        
         launcher.on_search_changed(move |query| {
             let query_str = query.to_string();
+            log::debug!("Search changed: '{}'", query_str);
             
             if query_str.is_empty() {
+                // Clear results immediately
                 if let Ok(mut results) = current_results.lock() {
                     results.clear();
                 }
+                // Update UI immediately
+                let _ = launcher_weak_search.upgrade_in_event_loop(|launcher| {
+                    let model = std::rc::Rc::new(VecModel::<SearchResult>::default());
+                    launcher.set_results(model.into());
+                    launcher.set_selected_index(0);
+                });
                 return;
             }
 
-            if let Ok(state) = state.lock() {
-                let search_results = state.search(&query_str);
-                
-                if let Ok(mut results) = current_results.lock() {
-                    *results = search_results;
-                }
+            // Perform search
+            let search_results = if let Ok(state) = state.lock() {
+                let results = state.search(&query_str);
+                log::debug!("Search returned {} results", results.len());
+                results
+            } else {
+                Vec::new()
+            };
+
+            // Store results
+            if let Ok(mut results) = current_results.lock() {
+                *results = search_results.clone();
             }
+
+            // Update UI IMMEDIATELY (not in polling thread)
+            let slint_results: Vec<SearchResult> = search_results.iter().map(|r| r.into()).collect();
+            let _ = launcher_weak_search.upgrade_in_event_loop(move |launcher| {
+                let model = std::rc::Rc::new(VecModel::from(slint_results));
+                launcher.set_results(model.into());
+                launcher.set_selected_index(0);
+                log::debug!("UI updated with search results");
+            });
         });
     }
 
-    // Handle result activation
+    // Handle result activation - with enhanced logging (Fix for Issue #5)
     {
         let state = Arc::clone(&state);
         let current_results = Arc::clone(&current_results);
@@ -391,32 +482,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         
         launcher.on_result_activated(move |index| {
             let index = index as usize;
+            log::info!("Result activated at index: {}", index);
             
             if let Ok(results) = current_results.lock() {
                 if let Some(result) = results.get(index) {
-                    log::info!("Activating: {}", result.name);
+                    log::info!("Launching: {} (type: {})", result.name, result.result_type);
+                    log::info!("Path: {:?}", result.path);
                     
                     // Record usage for MRU
                     if let Ok(mut state) = state.lock() {
                         state.record_usage(&result.name);
                     }
 
-                    // Execute the action
+                    // Execute the action with validation
                     match result.result_type.as_str() {
                         "app" | "file" => {
-                            let _ = open::that(&result.path);
+                            // Validate path exists before launching
+                            if result.path.exists() {
+                                match open::that(&result.path) {
+                                    Ok(_) => log::info!("Successfully launched: {}", result.name),
+                                    Err(e) => log::error!("Failed to launch {}: {}", result.name, e),
+                                }
+                            } else {
+                                log::error!("Path does not exist: {:?}", result.path);
+                            }
                         }
                         "calc" => {
-                            // Copy to clipboard would go here
+                            // TODO: Copy to clipboard
                             log::info!("Calculator result: {}", result.description);
                         }
                         "web" => {
-                            let _ = open::that(&result.path);
+                            match open::that(&result.path) {
+                                Ok(_) => log::info!("Opened URL: {:?}", result.path),
+                                Err(e) => log::error!("Failed to open URL: {}", e),
+                            }
                         }
                         "action" => {
+                            log::info!("Executing system action: {}", result.name);
                             actions::execute_system_action(&result.name);
                         }
-                        _ => {}
+                        _ => {
+                            log::warn!("Unknown result type: {}", result.result_type);
+                        }
                     }
 
                     // Hide the launcher (but keep running in background!)
@@ -424,6 +531,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         launcher.hide().ok();
                         launcher.set_is_visible(false);
                     });
+                } else {
+                    log::warn!("No result found at index {}", index);
                 }
             }
         });
@@ -466,30 +575,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Update UI periodically based on search results
-    {
-        let current_results = Arc::clone(&current_results);
-        let launcher_weak = launcher_weak.clone();
-        let app_running_ui = Arc::clone(&app_running);
-        
-        std::thread::spawn(move || {
-            loop {
-                if !app_running_ui.load(Ordering::Relaxed) {
-                    break;
-                }
-                
-                std::thread::sleep(std::time::Duration::from_millis(50));
-                
-                if let Ok(results) = current_results.lock() {
-                    let slint_results: Vec<SearchResult> = results.iter().map(|r| r.into()).collect();
-                    let _ = launcher_weak.upgrade_in_event_loop(move |launcher| {
-                        let model = std::rc::Rc::new(VecModel::from(slint_results));
-                        launcher.set_results(model.into());
-                    });
-                }
-            }
-        });
-    }
+    // NOTE: UI update polling thread removed - results are now updated immediately in on_search_changed
 
     // Start hidden, waiting for hotkey
     launcher.hide()?;

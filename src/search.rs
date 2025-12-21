@@ -1,7 +1,8 @@
 //! Search module
 //! Handles fuzzy matching and search result ranking
 
-use std::path::PathBuf;
+#![allow(dead_code)]
+
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
 

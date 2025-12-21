@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
-use slint::{Model, SharedString, VecModel, Weak};
+use slint::{Model, SharedString, VecModel};
 
 slint::include_modules!();
 
@@ -22,7 +22,7 @@ mod tray;
 
 use config::AppConfig;
 use single_instance::SingleInstance;
-use tray::{TrayEvent, TrayManager};
+use tray::{TrayEvent, TrayManager, check_tray_event};
 
 /// Application state
 struct LauncherState {
@@ -254,7 +254,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // === CREATE SYSTEM TRAY ===
-    let tray = TrayManager::new()?;
+    let _tray = TrayManager::new()?;
     log::info!("System tray created");
 
     // === CREATE UI ===
@@ -293,13 +293,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let launcher_weak_hotkey = launcher_weak.clone();
     let receiver = GlobalHotKeyEvent::receiver();
     let app_running_hotkey = Arc::clone(&app_running);
-    
+
     std::thread::spawn(move || {
         loop {
             if !app_running_hotkey.load(Ordering::Relaxed) {
                 break;
             }
-            
+
             if let Ok(event) = receiver.recv_timeout(std::time::Duration::from_millis(100)) {
                 if event.id == hotkey_id && event.state == HotKeyState::Pressed {
                     let _ = launcher_weak_hotkey.upgrade_in_event_loop(move |launcher| {
@@ -319,53 +319,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // Handle tray events
+    // === HANDLE TRAY MENU EVENTS ===
+    // Note: TrayManager must stay on main thread, but we can check events from any thread
+    // because MenuEvent::receiver() is a global static
     let launcher_weak_tray = launcher_weak.clone();
     let app_running_tray = Arc::clone(&app_running);
-    let state_for_tray = Arc::clone(&state);
-    
+
     std::thread::spawn(move || {
         loop {
             if !app_running_tray.load(Ordering::Relaxed) {
                 break;
             }
-            
-            if let Some(event) = tray.check_events() {
-                match event {
-                    TrayEvent::Show | TrayEvent::LeftClick => {
-                        let _ = launcher_weak_tray.upgrade_in_event_loop(|launcher| {
-                            launcher.invoke_clear_search();
-                            launcher.show().ok();
-                            launcher.set_is_visible(true);
-                            launcher.invoke_focus_input();
-                        });
-                    }
-                    TrayEvent::Settings => {
-                        // Open settings window (placeholder - opens config file location)
-                        if let Some(path) = AppConfig::config_path() {
-                            if let Some(dir) = path.parent() {
-                                let _ = open::that(dir);
-                            }
-                        }
-                    }
-                    TrayEvent::Exit => {
-                        log::info!("Exit requested from tray");
-                        app_running_tray.store(false, Ordering::Relaxed);
-                        
-                        // Save config before exit
-                        if let Ok(state) = state_for_tray.lock() {
-                            state.config.save();
-                        }
-                        
-                        let _ = launcher_weak_tray.upgrade_in_event_loop(|launcher| {
-                            launcher.hide().ok();
-                            slint::quit_event_loop().ok();
-                        });
-                    }
+
+            match check_tray_event() {
+                TrayEvent::Show => {
+                    log::info!("Tray: Show clicked");
+                    let _ = launcher_weak_tray.upgrade_in_event_loop(|launcher| {
+                        launcher.invoke_clear_search();
+                        launcher.show().ok();
+                        launcher.set_is_visible(true);
+                        launcher.invoke_focus_input();
+                    });
+                }
+                TrayEvent::Settings => {
+                    log::info!("Tray: Settings clicked (not implemented yet)");
+                    // TODO: Show settings dialog
+                }
+                TrayEvent::Exit => {
+                    log::info!("Tray: Exit clicked - shutting down");
+                    app_running_tray.store(false, Ordering::Relaxed);
+                    // Exit the application
+                    std::process::exit(0);
+                }
+                TrayEvent::None => {
+                    // No event, sleep briefly to avoid busy loop
+                    std::thread::sleep(std::time::Duration::from_millis(50));
                 }
             }
-            
-            std::thread::sleep(std::time::Duration::from_millis(50));
         }
     });
 

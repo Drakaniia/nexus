@@ -2,8 +2,6 @@
 //! Scans Start Menu, Desktop, and UWP apps to build a searchable index
 
 use std::path::PathBuf;
-use std::ffi::OsStr;
-use std::os::windows::ffi::OsStrExt;
 
 use crate::{AppEntry, AppType};
 

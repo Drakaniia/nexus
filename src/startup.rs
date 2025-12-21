@@ -1,14 +1,15 @@
 //! Windows Startup Registration Module
 //! Manages adding/removing the app from Windows startup via registry
 
+#![allow(dead_code)]
+
 use std::env;
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use windows::core::PCWSTR;
 use windows::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW,
-    RegSetValueExW, HKEY, HKEY_CURRENT_USER, KEY_ALL_ACCESS, KEY_READ, REG_OPTION_NON_VOLATILE,
-    REG_SZ,
+    RegCloseKey, RegDeleteValueW, RegOpenKeyW, RegQueryValueExW,
+    RegSetValueExW, HKEY, HKEY_CURRENT_USER, REG_SZ,
 };
 
 /// Registry key path for startup programs
@@ -21,25 +22,19 @@ const APP_NAME: &str = "WinLauncher";
 pub fn enable_startup() -> Result<(), StartupError> {
     let exe_path = env::current_exe().map_err(|_| StartupError::ExePathNotFound)?;
     let exe_path_str = exe_path.to_string_lossy();
-    
+
     // Add quotes around path in case of spaces
     let value = format!("\"{}\"", exe_path_str);
-    
+
     unsafe {
-        // Open or create the Run key
+        // Open the Run key
         let mut hkey: HKEY = HKEY::default();
         let key_path = to_wide_string(STARTUP_KEY);
-        
-        let result = RegCreateKeyExW(
+
+        let result = RegOpenKeyW(
             HKEY_CURRENT_USER,
             PCWSTR::from_raw(key_path.as_ptr()),
-            0,
-            None,
-            REG_OPTION_NON_VOLATILE,
-            KEY_ALL_ACCESS,
-            None,
             &mut hkey,
-            None,
         );
 
         if result.is_err() {
@@ -62,7 +57,7 @@ pub fn enable_startup() -> Result<(), StartupError> {
             Some(&value_bytes),
         );
 
-        RegCloseKey(hkey).ok();
+        let _ = RegCloseKey(hkey).ok();
 
         if result.is_err() {
             return Err(StartupError::RegistryWriteFailed);
@@ -78,12 +73,10 @@ pub fn disable_startup() -> Result<(), StartupError> {
     unsafe {
         let mut hkey: HKEY = HKEY::default();
         let key_path = to_wide_string(STARTUP_KEY);
-        
-        let result = RegOpenKeyExW(
+
+        let result = RegOpenKeyW(
             HKEY_CURRENT_USER,
             PCWSTR::from_raw(key_path.as_ptr()),
-            0,
-            KEY_ALL_ACCESS,
             &mut hkey,
         );
 
@@ -94,7 +87,7 @@ pub fn disable_startup() -> Result<(), StartupError> {
         let app_name = to_wide_string(APP_NAME);
         let result = RegDeleteValueW(hkey, PCWSTR::from_raw(app_name.as_ptr()));
 
-        RegCloseKey(hkey).ok();
+        let _ = RegCloseKey(hkey).ok();
 
         if result.is_err() {
             // Value might not exist, which is fine
@@ -111,12 +104,10 @@ pub fn is_startup_enabled() -> bool {
     unsafe {
         let mut hkey: HKEY = HKEY::default();
         let key_path = to_wide_string(STARTUP_KEY);
-        
-        let result = RegOpenKeyExW(
+
+        let result = RegOpenKeyW(
             HKEY_CURRENT_USER,
             PCWSTR::from_raw(key_path.as_ptr()),
-            0,
-            KEY_READ,
             &mut hkey,
         );
 
@@ -132,12 +123,12 @@ pub fn is_startup_enabled() -> bool {
             hkey,
             PCWSTR::from_raw(app_name.as_ptr()),
             None,
-            Some(&mut data_type),
+            Some(&mut data_type as *mut u32 as *mut _),
             None,
             Some(&mut data_size),
         );
 
-        RegCloseKey(hkey).ok();
+        let _ = RegCloseKey(hkey).ok();
 
         result.is_ok() && data_size > 0
     }

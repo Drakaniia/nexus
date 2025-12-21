@@ -1,564 +1,226 @@
-# **Comprehensive Plan: Completing the Windows Launcher Application**
+1. System Tray Problem
 
-## **Current Problem Analysis**
-Your application launches and Alt+Space works **once** because:
-1. No system tray/persistent process management
-2. No startup registration
-3. Single-instance mechanism missing
-4. Search indexing not initialized properly
+Current behavior: When you press Escape or Alt+Space again, the window hides BUT the application completely exits.
 
-## **Phase 1: Persistent Application Architecture (Week 1)**
+Why: Slint's event loop terminates when the window closes.
 
-### **1.1 System Tray Integration**
-```rust
-// Use system-tray crate or win32 API directly
-// Main components:
-// 1. Tray icon with context menu
-// 2. Background message loop
-// 3. Show/Hide/Quit options
+What needs to happen:
 
-#[windows::core::implement]
-struct TrayIcon {
-    hwnd: HWND,
-    icon: HICON,
-    menu: HMENU,
+* App must create a system tray icon using the tray-icon crate (already in Cargo.toml)
+* When window closes → hide window but keep running in background
+* Tray icon shows menu: "Show/Hide", "Settings", "Exit"
+* Only "Exit" menu item should terminate the app
+
+Key code location: src/main.rs needs a new callback before slint::run_event_loop()
+
+2. Single Instance Problem
+
+Current behavior: You can run winlauncher.exe multiple times, creating conflicts.
+
+What needs to happen:
+
+* Use Windows mutex named "Global\\WinLauncher_Instance"
+* First instance creates the mutex and runs normally
+* Second instance tries to create same mutex → detects it exists → exits immediately
+* Bonus: Second instance should signal first instance to show its window
+
+Key code location: Very first thing in main(), before anything else
+
+3. First-Letter Search Problem
+
+Current behavior: Type "v" → no results or wrong results appear first
+
+Why: Fuzzy matcher gives low scores to single-letter queries. "Visual Studio" might score lower than "Developer" if you recently used "Developer".
+
+What needs to happen:
+
+* Two-tier search system:
+  1. Prefix matching (highest priority): "v" matches anything starting with "v" or containing a word starting with "v"
+  2. Fuzzy matching (fallback): Only after prefix matches, do fuzzy matching for "vsal stdio" → "Visual Studio"
+
+Example:
+
+User types: "v"
+Step 1 - Prefix matches (score 1000+):
+  - Visual Studio Code
+  - VLC Media Player
+  - VS Code
+
+Step 2 - Fuzzy matches (score 50-500):
+  - Developer Tools (contains 'v' somewhere)
+  
+Result order: Visual Studio Code, VLC, VS Code, then Developer Tools
+
+Key code location: src/main.rs in LauncherState::search() method
+
+4. Configuration Persistence Problem
+
+Current behavior: No config file exists. All settings are hardcoded.
+
+What needs to happen:
+
+* Create %APPDATA%\WinLauncher\config.json file
+* Store settings like:
+  * Hotkey combination (currently hardcoded Alt+Space)
+  * Whether to run on startup
+  * Theme preferences
+  * MRU (Most Recently Used) data
+
+File structure:
+
+{
+  "hotkey": {
+    "modifiers": ["Alt"],
+    "key": "Space"
+  },
+  "startup": {
+    "enabled": true
+  },
+  "appearance": {
+    "theme": "dark"
+  }
 }
 
-impl TrayIcon {
-    fn create() -> Result<Self> {
-        // Create hidden message-only window
-        // Add tray icon with NOTIFYICONDATA
-        // Create popup menu
-    }
-    
-    fn show_context_menu(&self) {
-        // Display menu at cursor position
-    }
-}
-```
+Key code location: New file src/config.rs, loaded in main() before UI creation
 
-### **1.2 Single Instance Enforcement**
-```rust
-use windows::Win32::System::Mailslots::{CreateMailslotA, GetMailslotInfo};
-use windows::Win32::System::Threading::{CreateEventA, WaitForSingleObject};
+5. Windows Startup Registration Problem
 
-struct InstanceManager {
-    mailslot: HANDLE,
-    event: HANDLE,
-}
+Current behavior: Must manually run winlauncher.exe after every reboot.
 
-impl InstanceManager {
-    fn ensure_single_instance() -> bool {
-        // Method 1: Named mutex (simplest)
-        let mutex = CreateMutexA(None, true, "Global\\WinLauncher_Instance");
-        
-        // Method 2: Named pipe for IPC communication
-        // Allows bringing existing instance to foreground
-        
-        // If instance exists:
-        // 1. Send message to existing instance
-        // 2. Bring its window to foreground
-        // 3. Exit new instance
-    }
-}
-```
+What needs to happen:
 
-### **1.3 Background Service Loop**
-```rust
-// Separate thread for message processing
-fn run_background_service() {
-    let mut msg = MSG::default();
-    unsafe {
-        while GetMessageA(&mut msg, None, 0, 0).into() {
-            TranslateMessage(&msg);
-            DispatchMessageA(&msg);
-        }
-    }
-}
-```
+* Write to Windows registry: HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run
+* Add entry: "WinLauncher" = "C:\path\to\winlauncher.exe"
+* User should see "WinLauncher" in Task Manager → Startup tab
 
-## **Phase 2: Installation & Startup (Week 2)**
+Key code location: New file src/startup.rs with functions:
 
-### **2.1 Installation Wizard**
-```rust
-// Wizard steps:
-// 1. Welcome screen
-// 2. Choose installation type (Current User/All Users)
-// 3. Choose hotkey (default Alt+Space)
-// 4. Configure search options
-// 5. Add to startup options
-// 6. Complete installation
+* enable_startup() → writes registry
+* disable_startup() → deletes registry key
+* is_startup_enabled() → checks if key exists
 
-struct InstallerWizard {
-    steps: Vec<WizardStep>,
-    current_step: usize,
-    config: InstallationConfig,
-}
+6. First-Run Experience Problem
 
-impl InstallerWizard {
-    fn run_first_time_setup() {
-        if !config_exists() {
-            // Show wizard UI
-            // Collect user preferences
-            // Write to registry/config file
-            // Register startup entry
-        }
-    }
-}
-```
+Current behavior: App just starts with no guidance.
 
-### **2.2 Startup Registration**
-```rust
-fn register_startup() -> Result<()> {
-    // For current user (recommended):
-    let key_path = r"Software\Microsoft\Windows\CurrentVersion\Run";
-    
-    // Create registry entry
-    RegSetValueExA(
-        hkey,
-        "WinLauncher",
-        0,
-        REG_SZ,
-        exe_path.as_ptr() as _,
-        exe_path.len() as u32
-    );
-    
-    // Alternative: Startup folder
-    // %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup
-}
-```
+What needs to happen:
 
-### **2.3 Configuration Management**
-```rust
-#[derive(Serialize, Deserialize)]
-struct AppConfig {
-    hotkey: HotkeyConfig,
-    search: SearchConfig,
-    appearance: AppearanceConfig,
-    startup: StartupConfig,
-}
+* On very first launch, show a welcome window
+* Ask user:
+  1. "Enable Alt+Space hotkey?" (or let them choose different key)
+  2. "Run on Windows startup?" (checkbox)
+  3. "Show brief tutorial?"
+* Save choices to config file
+* Then start normal app
 
-impl AppConfig {
-    fn load() -> Self {
-        // Try loading order:
-        // 1. Portable config next to exe
-        // 2. %APPDATA%\WinLauncher\config.json
-        // 3. Registry: HKCU\Software\WinLauncher
-        // 4. Default values
-    }
-}
-```
+Key code location: src/main.rs check if config file exists, if not → show wizard
 
-## **Phase 3: Search Implementation (Week 3-4)**
+7. Installer Creation
 
-### **3.1 Application Discovery & Indexing**
-```rust
-struct AppIndex {
-    apps: Vec<AppEntry>,
-    trie: Trie, // For prefix searching
-    last_refresh: SystemTime,
-}
+Current behavior: Only have winlauncher.exe - user must manually configure everything.
 
-impl AppIndex {
-    fn build_index() -> Vec<AppEntry> {
-        let mut apps = Vec::new();
-        
-        // 1. Start Menu (All Users & Current User)
-        // C:\ProgramData\Microsoft\Windows\Start Menu\Programs
-        // C:\Users\{user}\AppData\Roaming\Microsoft\Windows\Start Menu\Programs
-        
-        // 2. Desktop shortcuts
-        // 3. PATH environment variable executables
-        // 4. UWP apps via PackageManager
-        // 5. Registry: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths
-        
-        apps
-    }
-    
-    fn search(&self, query: &str) -> Vec<&AppEntry> {
-        // Use Trie for prefix matching
-        // Score by: prefix match, recency, frequency
-    }
-}
-```
+What needs to happen:
 
-### **3.2 Real-time Search UI**
-```rust
-struct SearchUI {
-    input: String,
-    results: Vec<SearchResult>,
-    selected: usize,
-    last_query: String,
-}
+Option A - WiX Toolset (Microsoft's official):
 
-impl SearchUI {
-    fn on_text_changed(&mut self, text: &str) {
-        // Debounce: wait 50ms before searching
-        if text != self.last_query {
-            self.last_query = text.to_string();
-            
-            // Start search in background thread
-            let query = text.to_string();
-            thread::spawn(move || {
-                let results = search_backend.search(&query);
-                // Send back to UI thread via channel
-            });
-        }
-    }
-    
-    fn render_results(&self) {
-        // Display immediately with partial matches
-        // Highlight matching characters
-        // Show "V" -> "Visual Studio", "VLC", etc.
-    }
-}
-```
+* Creates .msi installer file
+* Professional, shows in Windows "Add/Remove Programs"
+* Can bundle multiple files, create shortcuts
+* Harder to set up initially
 
-### **3.3 Search Algorithm Implementation**
-```rust
-struct SearchEngine {
-    app_index: AppIndex,
-    file_index: FileIndex,
-    web_engine: Option<WebSearch>,
-    cache: LruCache<String, Vec<SearchResult>>,
-}
+Both should:
 
-impl SearchEngine {
-    fn search(&mut self, query: &str) -> Vec<SearchResult> {
-        // Check cache first
-        if let Some(cached) = self.cache.get(query) {
-            return cached.clone();
-        }
-        
-        // Parallel search across all backends
-        let (apps, files, web) = join!(
-            self.app_index.search(query),
-            self.file_index.search(query),
-            self.web_engine.as_ref().map_or_else(
-                || Ok(vec![]),
-                |w| w.search(query)
-            )
-        );
-        
-        // Merge and rank results
-        let mut all_results = self.merge_results(apps, files, web);
-        all_results.sort_by(|a, b| b.score.cmp(&a.score));
-        
-        // Cache results
-        self.cache.put(query.to_string(), all_results.clone());
-        
-        all_results
-    }
-}
-```
+* Copy winlauncher.exe to %LOCALAPPDATA%\WinLauncher\
+* Create Start Menu shortcut
+* Optionally add to Windows startup
+* Create uninstaller
 
-## **Phase 4: Complete Implementation Roadmap**
+8. Auto-Update System
 
-### **Week 1: Core Infrastructure**
-```
-Day 1-2: System Tray & Background Service
-  ✓ Create message-only window
-  ✓ Add tray icon with menu
-  ✓ Implement Show/Hide/Exit functionality
-  ✓ Handle WM_TRAYICON messages
+Two strategies needed:
 
-Day 3-4: Single Instance & IPC
-  ✓ Create named mutex for single instance
-  ✓ Implement IPC for bringing to foreground
-  ✓ Handle command-line arguments
+Strategy A - GitHub Releases Check:
 
-Day 5-7: Configuration System
-  ✓ JSON config with serde
-  ✓ Registry fallback
-  ✓ Hotkey change detection
-```
+* Every 24 hours, check https://api.github.com/repos/Drakaniia/nexus/releases/latest
+* Compare version in response vs current version
+* If newer: Show notification "Update available" in tray tooltip
 
-### **Week 2: Installation & Setup**
-```
-Day 1-3: Installation Wizard
-  ✓ Create wizard UI (native dialogs or simple window)
-  ✓ Collect user preferences
-  ✓ Validate hotkey availability
-  ✓ Create config file
+Strategy B - Built-in Updater:
 
-Day 4-5: Startup Integration
-  ✓ Add to startup registry
-  ✓ Create Start Menu shortcut
-  ✓ Uninstaller implementation
+* Download new .exe from GitHub release
+* Save as winlauncher_new.exe
+* On next restart, replace old file with new one
+* Can use Windows Task Scheduler for this
 
-Day 6-7: First Run Experience
-  ✓ Welcome screen
-  ✓ Quick tutorial
-  ✓ Import existing shortcuts
-```
+Key code location: New file src/updater.rs, called from tray menu "Check for Updates"
 
-### **Week 3: Search Engine**
-```
-Day 1-2: Application Indexing
-  ✓ Scan Start Menu folders
-  ✓ Parse .lnk files for targets
-  ✓ Extract icons and metadata
-  ✓ Build in-memory Trie index
+Implementation Roadmap
 
-Day 3-4: Real-time Search UI
-  ✓ Implement debounced search
-  ✓ Display incremental results
-  ✓ Keyboard navigation improvements
-  ✓ Result highlighting
+Create a system tray implementation for my Rust Slint app:
+1. Use tray-icon crate to create tray icon with menu items: Show, Settings, Exit
+2. Modify main.rs to handle window close → hide instead of exit
+3. Only Exit menu item should call std::process::exit(0)
+4. Slint window should use on_close_requested callback returning KeepWindowShown
+5. Create src/tray.rs module with TrayManager struct
 
-Day 5-7: File Search Integration
-  ✓ Windows Search API integration
-  ✓ Recent files cache
-  ✓ Quick file name matching
-```
+Implement Windows single instance enforcement:
+1. Create src/single_instance.rs with InstanceGuard struct
+2. Use Windows CreateMutexW API with "Global\\WinLauncher_Instance" name
+3. Check GetLastError for ERROR_ALREADY_EXISTS (183)
+4. In main.rs, call this FIRST before anything else
+5. If already running, log warning and exit gracefully
 
-### **Week 4: Polish & Optimization**
-```
-Day 1-2: Performance Optimization
-  ✓ Profile with WPA (Windows Performance Analyzer)
-  ✓ Reduce UI thread blocking
-  ✓ Implement predictive loading
-  ✓ Memory usage optimization
+Fix first-letter search in src/main.rs LauncherState::search():
+1. Before fuzzy matching, do prefix matching
+2. Prefix match: name.starts_with(query) OR any word starts with query
+3. Give prefix matches score of 1000
+4. Give fuzzy matches their normal score (10-500)
+5. Sort all matches by score descending
+6. Take top 6 results total
 
-Day 3-4: Reliability Features
-  ✓ Auto-recovery on crash
-  ✓ Index corruption detection
-  ✓ Config backup/restore
-  ✓ Update notification system
+Create persistent configuration:
+1. New file src/config.rs with AppConfig struct using serde
+2. Fields: hotkey (modifiers + key), startup (bool), appearance
+3. load_or_default() reads from %APPDATA%\WinLauncher\config.json
+4. save() writes to that file
+5. In main.rs, load config before creating UI
 
-Day 5-7: Final Polish
-  ✓ Smooth animations
-  ✓ Sound feedback (optional)
-  ✓ Accessibility features
-  ✓ Comprehensive logging
-```
+Implement Windows startup registration:
+1. Create src/startup.rs using windows crate registry APIs
+2. enable_startup() writes to HKCU\Software\Microsoft\Windows\CurrentVersion\Run
+3. Key name: "WinLauncher", value: full path to exe
+4. disable_startup() deletes that registry key
+5. is_startup_enabled() checks if key exists
 
-## **Detailed Technical Solutions**
+Add first-run experience:
+1. In main.rs, check if config file exists
+2. If not exists, show Slint dialog window before main launcher
+3. Ask: hotkey preference, startup enabled checkbox
+4. Save choices to config
+5. Then proceed with normal app startup
 
-### **A. Making Alt+Space Work Permanently**
-```rust
-// Main application structure
-struct WinLauncher {
-    tray_icon: TrayIcon,
-    hotkey_manager: HotkeyManager,
-    search_window: SearchWindow,
-    config: Arc<RwLock<AppConfig>>,
-    running: Arc<AtomicBool>,
-}
+Create WiX installer configuration:
+1. Install to %LOCALAPPDATA%\WinLauncher
+2. Create Start Menu shortcut via ComponentGroup
+3. Registry entry for startup
+4. Add to Programs and Features
+5. Build with candle + light tools
 
-impl WinLauncher {
-    fn run() -> Result<()> {
-        // 1. Check single instance
-        if !InstanceManager::ensure_single() {
-            return Ok(());
-        }
-        
-        // 2. Load configuration
-        let config = AppConfig::load();
-        
-        // 3. Initialize components
-        let tray = TrayIcon::create()?;
-        let hotkey = HotkeyManager::register(config.hotkey)?;
-        
-        // 4. Main message loop
-        let mut msg = MSG::default();
-        unsafe {
-            while GetMessageA(&mut msg, None, 0, 0).into() {
-                // Handle hotkey messages
-                if msg.message == WM_HOTKEY {
-                    self.search_window.toggle();
-                }
-                
-                // Handle tray messages
-                if msg.message == WM_TRAYICON {
-                    self.handle_tray_message(msg.wParam, msg.lParam);
-                }
-                
-                TranslateMessage(&msg);
-                DispatchMessageA(&msg);
-            }
-        }
-    }
-}
-```
+Implement auto-update system:
+1. Create src/updater.rs with check_for_updates() function
+2. Call GitHub API: https://api.github.com/repos/Drakaniia/nexus/releases/latest
+3. Parse JSON response, compare version tag with current version
+4. If newer, show tray notification
+5. Optional: download_update() function to fetch new .exe
+6. Add "Check for Updates" to tray menu
 
-### **B. Instant Search Implementation**
-```rust
-// Trie data structure for prefix searching
-struct TrieNode {
-    children: HashMap<char, TrieNode>,
-    app_ids: Vec<usize>, // References to app entries
-    is_end: bool,
-}
+🎯 Recommended Order for Implementation
 
-impl Trie {
-    fn insert(&mut self, word: &str, app_id: usize) {
-        let mut node = &mut self.root;
-        for ch in word.to_lowercase().chars() {
-            node = node.children.entry(ch).or_insert(TrieNode::new());
-            node.app_ids.push(app_id);
-        }
-        node.is_end = true;
-    }
-    
-    fn search_prefix(&self, prefix: &str) -> Vec<usize> {
-        let mut node = &self.root;
-        for ch in prefix.to_lowercase().chars() {
-            if let Some(next) = node.children.get(&ch) {
-                node = next;
-            } else {
-                return vec![];
-            }
-        }
-        node.app_ids.clone()
-    }
-}
-
-// Real-time search handler
-fn handle_search_input(text: &str) {
-    if text.is_empty() {
-        show_recent_items();
-        return;
-    }
-    
-    // Immediate prefix match from Trie
-    let prefix_matches = app_trie.search_prefix(text);
-    
-    // Fuzzy matching for non-prefix matches
-    let fuzzy_matches = fuzzy_search(text, ALL_APPS);
-    
-    // Combine and sort by relevance
-    let mut results = combine_results(prefix_matches, fuzzy_matches);
-    results.sort_by(|a, b| {
-        // Priority: exact match > prefix > substring > fuzzy
-        score_match(a, text).cmp(&score_match(b, text))
-    });
-    
-    update_ui_with_results(results);
-}
-```
-
-### **C. Complete Application Flow**
-```
-Application Startup:
-1. main() called
-2. Check if already running → bring to foreground if yes
-3. Load configuration (create default if first run)
-4. Initialize search index (background thread)
-5. Register global hotkey
-6. Create system tray icon
-7. Enter message loop
-
-Hotkey Pressed (Alt+Space):
-1. WM_HOTKEY received
-2. Bring search window to foreground
-3. Set focus to search box
-4. Clear previous results
-5. Show recent items if box empty
-
-User Types:
-1. Key event captured
-2. Update search box text
-3. Start debounce timer (50ms)
-4. On timer:
-   - Query search index
-   - Update results list
-   - Highlight matches
-
-User Selects Result:
-1. Execute action based on type:
-   - App: ShellExecute with path
-   - File: Open with default program
-   - Web: Launch browser with query
-2. Hide search window
-3. Add to recent items list
-```
-
-## **Testing Checklist**
-
-### **Functional Tests**
-```
-[ ] Alt+Space shows/hides window consistently
-[ ] Single instance enforcement works
-[ ] System tray icon appears
-[ ] Context menu functions work
-[ ] Search updates with each keystroke
-[ ] Applications launch correctly
-[ ] Files open with default programs
-[ ] Configuration saves/loads properly
-[ ] Startup registration works
-[ ] Uninstaller removes all traces
-```
-
-### **Performance Tests**
-```
-[ ] Cold startup < 100ms
-[ ] Hotkey response < 50ms
-[ ] First search < 100ms
-[ ] Subsequent searches < 30ms
-[ ] Memory usage < 20MB
-[ ] CPU idle < 0.1%
-[ ] Indexing completes in < 10 seconds
-```
-
-## **Deployment Package**
-
-### **File Structure**
-```
-WinLauncher/
-├── bin/
-│   ├── WinLauncher.exe          # Main executable
-│   ├── WinLauncher.dll          # If needed
-│   └── uninstall.exe           # Uninstaller
-├── config/
-│   ├── default.json            # Default configuration
-│   └── icons/                  # Application icons
-├── logs/                       # Log files
-└── README.txt                  # Quick start guide
-```
-
-### **Installer Features**
-```
-1. Welcome screen with license agreement
-2. Installation directory selection
-3. Choose components:
-   - Desktop shortcut
-   - Start Menu entry
-   - Add to PATH
-4. Configure initial settings
-5. Run on completion option
-6. Uninstaller entry in Add/Remove Programs
-```
-
-## **Quick Fix for Immediate Issues**
-
-If you need a quick solution to make your current executable work persistently:
-
-1. **Add to Startup manually**:
-   - Press Win+R, type `shell:startup`
-   - Create shortcut to your .exe
-
-2. **Create a simple batch file** to run as service:
-```batch
-@echo off
-:start
-WinLauncher.exe
-if %errorlevel% == 0 goto end
-timeout /t 5
-goto start
-:end
-```
-
-3. **Minimal system tray addition** (quick fix):
-```rust
-// Add this to your main() after window creation
-use systray::Application;
-
-let mut app = Application::new()?;
-app.set_icon_from_file("icon.ico")?;
-app.add_menu_item("Show", || { /* show window */ })?;
-app.add_menu_item("Exit", || { std::process::exit(0); })?;
-app.wait_for_message()?;
-```
-
-This comprehensive plan addresses all your missing pieces and provides a clear path to a fully functional, production-ready Windows launcher application.
+1. System Tray (Prompt 1) - Makes app persistent ⭐ CRITICAL
+2. Single Instance (Prompt 2) - Prevents conflicts ⭐ CRITICAL
+3. Search Fix (Prompt 3) - Solves "v" problem ⭐ CRITICAL
+4. Configuration (Prompt 4) - Saves settings
+5. Startup (Prompt 5) - Auto-launch
+6. First-Run (Prompt 6) - User onboarding
+7. Installer (Prompt 7) - Distribution
+8. Updater (Prompt 8) - Maintenance

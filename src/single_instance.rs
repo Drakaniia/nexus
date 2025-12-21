@@ -1,12 +1,11 @@
 //! Single Instance Enforcement Module
 //! Prevents multiple instances of the launcher from running simultaneously
 
-use std::ptr;
-use windows::core::PCSTR;
+use windows::core::PCWSTR;
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, WPARAM};
-use windows::Win32::System::Threading::{CreateMutexA, OpenMutexA, MUTEX_ALL_ACCESS};
+use windows::Win32::System::Threading::{CreateMutexW, OpenMutexW, MUTEX_ALL_ACCESS};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetWindowTextA, GetWindowThreadProcessId, PostMessageA, SetForegroundWindow,
+    EnumWindows, GetWindowTextA, PostMessageA, SetForegroundWindow,
     ShowWindow, SW_RESTORE, WM_USER,
 };
 
@@ -14,7 +13,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 pub const WM_SHOW_LAUNCHER: u32 = WM_USER + 100;
 
 /// Mutex name for single instance check
-const MUTEX_NAME: &str = "Global\\WinLauncher_SingleInstance_Mutex\0";
+const MUTEX_NAME: &str = "Global\\WinLauncher_SingleInstance_Mutex";
 
 /// Manages single instance enforcement
 pub struct SingleInstance {
@@ -27,24 +26,25 @@ impl SingleInstance {
     /// Returns Err if another instance is already running
     pub fn acquire() -> Result<Self, SingleInstanceError> {
         unsafe {
-            // Try to create the mutex
-            let mutex_name = PCSTR::from_raw(MUTEX_NAME.as_ptr());
-            
-            match CreateMutexA(None, true, mutex_name) {
+            // Convert the mutex name to a wide string
+            let wide_name: Vec<u16> = MUTEX_NAME.encode_utf16().chain(std::iter::once(0)).collect();
+            let mutex_name = PCWSTR::from_raw(wide_name.as_ptr());
+
+            match CreateMutexW(None, true, mutex_name) {
                 Ok(handle) => {
                     // Check if mutex already existed
                     let last_error = windows::Win32::Foundation::GetLastError();
-                    
+
                     if last_error.0 == 183 {
                         // ERROR_ALREADY_EXISTS - another instance is running
                         CloseHandle(handle).ok();
-                        
+
                         // Try to signal the existing instance
                         Self::signal_existing_instance();
-                        
+
                         return Err(SingleInstanceError::AlreadyRunning);
                     }
-                    
+
                     log::info!("Single instance lock acquired");
                     Ok(Self {
                         mutex_handle: Some(handle),
@@ -72,9 +72,10 @@ impl SingleInstance {
     #[allow(dead_code)]
     pub fn is_another_running() -> bool {
         unsafe {
-            let mutex_name = PCSTR::from_raw(MUTEX_NAME.as_ptr());
-            
-            match OpenMutexA(MUTEX_ALL_ACCESS, false, mutex_name) {
+            let wide_name: Vec<u16> = MUTEX_NAME.encode_utf16().chain(std::iter::once(0)).collect();
+            let mutex_name = PCWSTR::from_raw(wide_name.as_ptr());
+
+            match OpenMutexW(MUTEX_ALL_ACCESS, false, mutex_name) {
                 Ok(handle) => {
                     CloseHandle(handle).ok();
                     true
@@ -109,8 +110,8 @@ unsafe extern "system" fn enum_windows_callback(hwnd: HWND, _lparam: LPARAM) -> 
             log::info!("Found existing launcher window, bringing to foreground");
             
             // Restore and bring to foreground
-            ShowWindow(hwnd, SW_RESTORE);
-            SetForegroundWindow(hwnd);
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+            let _ = SetForegroundWindow(hwnd);
             
             // Post custom message to show the launcher
             PostMessageA(hwnd, WM_SHOW_LAUNCHER, WPARAM(0), LPARAM(0)).ok();

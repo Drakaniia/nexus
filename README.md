@@ -1,158 +1,128 @@
-# Nexus - Windows Launcher
+# WinLauncher - Windows Application Launcher
 
-A lightweight, fast, and aesthetically pleasing Windows launcher application inspired by Spotlight on macOS. Built with Rust and Slint, Nexus provides quick access to applications, files, and system utilities with a modern Windows 11 aesthetic.
+A lightweight, modern Windows launcher with advanced configuration and auto-update capabilities.
 
 ## Features
 
-### 🔍 Smart Search
-- **Fuzzy matching**: Find applications even with partial or approximate text
-- **Most Recently Used (MRU)**: Frequently used applications appear higher in results
-- **Multi-source indexing**: Searches Start Menu, Desktop, and system utilities
-
-### ⌨️ Quick Actions
-- **Global hotkey**: Activate with `Alt + Space` anywhere in Windows
-- **Calculator**: Type mathematical expressions directly (e.g., `2+2`, `sqrt(16)`)
-- **Web search**: Quick search with prefixes like `g search term` for Google or `yt video` for YouTube
-- **System commands**: Access system actions like Lock, Sleep, Restart, Shutdown, Sign Out, and Empty Recycle Bin
-
-### 🎨 Modern UI
-- **Windows 11 aesthetics**: Glass-like transparency effects with Mica-inspired backdrop
-- **Smooth animations**: Fluid transitions and hover effects
-- **Intuitive navigation**: Arrow keys to navigate results, Enter to select
-- **Visual categorization**: Different icons for apps, files, calculations, and web searches
-
-### 🚀 Performance
-- **Lightweight**: Minimal resource usage with fast startup times
-- **Asynchronous indexing**: Apps are discovered in the background
-- **Optimized builds**: Release builds are optimized for size and performance
+✨ **Lightning Fast**: Instant application search and launch  
+🎨 **Modern UI**: Clean, dark-themed interface with customizable opacity  
+⚙️ **Highly Configurable**: Comprehensive settings for every aspect  
+🔄 **Auto-Update**: Built-in update system with GitHub integration  
+🚀 **Professional Installer**: WiX-based MSI installer with upgrade support  
 
 ## Installation
 
-### Prerequisites
-- Windows 10 or Windows 11
-- [Rust](https://www.rust-lang.org/tools/install) (latest stable version)
+### Option 1: MSI Installer (Recommended)
+1. Download `WinLauncher-Setup.msi` from [Releases](https://github.com/Qwenzy/nexus/releases)
+2. Double-click to install
+3. Launch from Start Menu or Desktop shortcut
 
-### Building from Source
-
-1. Clone the repository:
+### Option 2: Build from Source
 ```bash
-git clone https://github.com/Drakaniia/nexus.git
-cd nexus
-```
-
-2. Build the application:
-```bash
+# Build release binary
 cargo build --release
-```
 
-3. The executable will be located at:
+# Build MSI installer
+cd installer
+.\build.bat
 ```
-target/release/winlauncher.exe
-```
-
-### Pre-built Binaries
-Pre-built binaries will be available in the [Releases](https://github.com/Drakaniia/nexus/releases) section once published.
 
 ## Usage
 
-### Activation
-Press `Alt + Space` anywhere in Windows to activate the launcher.
-
-### Searching
-- Start typing to search for applications, files, or system utilities
-- Use arrow keys (`↑` and `↓`) to navigate results
-- Press `Enter` to launch the selected item
-- Press `Escape` to close the launcher
-
-### Special Functions
-
-#### Calculator
-Type mathematical expressions directly:
-- `2+2`
-- `10 * 5`
-- `sqrt(16)`
-- `3.14 * 2^2`
-
-#### Web Search
-Use prefixes to initiate web searches:
-- `g search terms` - Google search
-- `google search terms` - Google search
-- `yt video title` - YouTube search
-- `youtube video title` - YouTube search
-- `gh repository name` - GitHub search
-- `wiki topic` - Wikipedia search
-
-#### System Actions
-Type these commands to perform system actions:
-- `lock` - Lock your computer
-- `sleep` - Put computer to sleep
-- `restart` or `reboot` - Restart your computer
-- `shutdown` - Shut down your computer
-- `logout` or `sign out` - Sign out of your account
-- `empty trash` or `empty recycle bin` - Empty the Recycle Bin
-
-#### Direct URLs
-Paste or type URLs directly to open them in your default browser:
-- `https://www.example.com`
+- **Launch**: Press `Alt+Space` (configurable)
+- **Search**: Start typing to find applications
+- **Execute**: Press Enter or click to launch
+- **Settings**: Right-click tray icon → Settings
 
 ## Configuration
 
-The application automatically discovers applications from:
-- User's Start Menu
-- System's Start Menu
-- Desktop folder
-- Common system utilities
+Settings are stored in: `%APPDATA%\Win Launcher\config.json`
 
-Configuration options will be available in future releases.
+### Available Settings
 
-## Contributing
+**General:**
+- Theme (Dark/Light)
+- Window Opacity
+- Font Size
+- Window Size (Compact/Normal/Large)
 
-We welcome contributions to Nexus! Here's how you can help:
+**Search:**
+- Max Results count
+- Fuzzy Matching toggle
+- Search Delay (debounce)
+- Folder Exclusions
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Commit your changes (`git commit -m 'Add amazing feature'`)
-5. Push to the branch (`git push origin feature/amazing-feature`)
-6. Open a Pull Request
+**Startup:**
+- Run on Windows startup
+- Show window on startup
 
-### Development Setup
+**Updates:**
+- Auto-check for updates
+- Check frequency
+- Beta channel toggle
 
-1. Install Rust and Cargo
-2. Install [Slint](https://slint.dev/) dependencies
-3. Clone the repository
-4. Build and run in debug mode:
+## Development
+
+### Prerequisites
+- Rust 1.70+ ([rustup.rs](https://rustup.rs))
+- WiX Toolset 3.11+ (for installer)
+
+### Build Commands
 ```bash
+# Check code
+cargo check
+
+# Run in development
 cargo run
+
+# Build release
+cargo build --release
+
+# Build installer
+cd installer && build.bat
+```
+
+### Project Structure
+```
+nexus/
+├── src/           # Rust source code
+├── ui/            # Slint UI definitions
+├── installer/     # WiX installer config
+├── docs/          # Documentation
+└── Cargo.toml     # Project manifest
 ```
 
 ## Architecture
 
-Nexus is built with:
-- **Rust**: Systems programming language for performance and safety
-- **Slint**: Toolkit for developing native user interfaces
-- **Windows API**: Direct integration with Windows systems
-- **Tokio**: Asynchronous runtime for background operations
+- **UI Framework**: Slint (declarative, compiled)
+- **Platform**: Windows-native APIs
+- **Hotkey**: global-hotkey crate
+- **Tray**: tray-icon crate  
+- **Updates**: GitHub Releases API
+- **Installer**: WiX Toolset
 
-### Key Components
+## Contributing
 
-- `main.rs`: Application entry point and event loop management
-- `app_discovery.rs`: Logic for discovering installed applications
-- `search.rs`: Fuzzy matching and search algorithms
-- `actions.rs`: Special commands and system actions
-- `ui/main.slint`: User interface definition
+Contributions welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE.rtf)
 
-## Acknowledgments
+## Changelog
 
-- [Slint](https://slint.dev/) for the UI framework
-- [Rust](https://www.rust-lang.org/) for the programming language
-- [Windows API](https://docs.microsoft.com/en-us/windows/win32/api/) for system integration
-- Inspired by Spotlight on macOS and other launcher applications
+### v0.1.0 (2025-12-23)
+- Initial release
+- Core launcher functionality
+- Settings UI with 4 tabs
+- MSI installer
+- Auto-update system (planned)
+- Comprehensive configuration
 
-## Support
+## Credits
 
-If you encounter any issues or have suggestions for improvement, please [open an issue](https://github.com/Drakaniia/nexus/issues) on GitHub.
+Developed by **Qwenzy**  
+Built with Rust 🦀 and Slint

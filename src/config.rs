@@ -18,6 +18,14 @@ pub struct AppConfig {
     /// Appearance settings
     pub appearance: AppearanceConfig,
     
+    /// Search settings
+    #[serde(default)]
+    pub search: SearchConfig,
+    
+    /// Update settings
+    #[serde(default)]
+    pub update: UpdateConfig,
+    
     /// Most Recently Used tracking
     #[serde(default)]
     pub mru: HashMap<String, u32>,
@@ -65,6 +73,14 @@ pub struct AppearanceConfig {
     /// Maximum number of search results to show
     #[serde(default = "default_max_results")]
     pub max_results: usize,
+    
+    /// Font size in pixels
+    #[serde(default = "default_font_size")]
+    pub font_size: u32,
+    
+    /// Window size preset (compact, normal, large)
+    #[serde(default = "default_window_size")]
+    pub window_size: String,
 }
 
 fn default_opacity() -> f32 {
@@ -75,12 +91,50 @@ fn default_max_results() -> usize {
     8
 }
 
+fn default_font_size() -> u32 {
+    14
+}
+
+fn default_window_size() -> String {
+    "normal".to_string()
+}
+
+/// Search configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchConfig {
+    /// Folders to exclude from search
+    #[serde(default)]
+    pub excluded_folders: Vec<String>,
+    
+    /// File type filters (e.g., "Documents", "Images")
+    #[serde(default)]
+    pub file_type_filters: Vec<String>,
+    
+    /// Search delay in milliseconds (debounce)
+    #[serde(default = "default_search_delay")]
+    pub search_delay_ms: u32,
+    
+    /// Enable fuzzy matching
+    #[serde(default = "default_fuzzy_search")]
+    pub fuzzy_search: bool,
+}
+
+fn default_search_delay() -> u32 {
+    150
+}
+
+fn default_fuzzy_search() -> bool {
+    true
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
             hotkey: HotkeyConfig::default(),
             startup: StartupConfig::default(),
             appearance: AppearanceConfig::default(),
+            search: SearchConfig::default(),
+            update: UpdateConfig::default(),
             mru: HashMap::new(),
             first_run: true,
         }
@@ -111,6 +165,58 @@ impl Default for AppearanceConfig {
             theme: "dark".to_string(),
             opacity: 0.96,
             max_results: 8,
+            font_size: 14,
+            window_size: "normal".to_string(),
+        }
+    }
+}
+
+impl Default for SearchConfig {
+    fn default() -> Self {
+        Self {
+            excluded_folders: vec![],
+            file_type_filters: vec![],
+            search_delay_ms: 150,
+            fuzzy_search: true,
+        }
+    }
+}
+
+/// Update configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateConfig {
+    /// Enable automatic update checking
+    #[serde(default = "default_auto_check")]
+    pub auto_check: bool,
+    
+    /// Check frequency in hours
+    #[serde(default = "default_check_frequency")]
+    pub check_frequency_hours: u32,
+    
+    /// Enable beta/pre-release updates
+    #[serde(default)]
+    pub beta_channel: bool,
+    
+    /// Last update check timestamp (ISO 8601)
+    #[serde(default)]
+    pub last_check: Option<String>,
+}
+
+fn default_auto_check() -> bool {
+    true
+}
+
+fn default_check_frequency() -> u32 {
+    24
+}
+
+impl Default for UpdateConfig {
+    fn default() -> Self {
+        Self {
+            auto_check: true,
+            check_frequency_hours: 24,
+            beta_channel: false,
+            last_check: None,
         }
     }
 }

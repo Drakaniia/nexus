@@ -1,123 +1,34 @@
 //! First-Run Setup Wizard Module
 //! Displays a multi-screen configuration wizard on first application launch
+//! 
+//! NOTE: Wizard UI temporarily disabled due to Slint module compilation issues
+//! The wizard.slint file exists but needs proper integration strategy
 
-use crate::config::{AppConfig, HotkeyConfig};
+use crate::config::AppConfig;
 use std::error::Error;
 
-slint::include_modules!();
-
 /// Show the setup wizard and collect user configuration
+/// 
+/// TEMPORARY: Wizard UI is disabled, returns Ok immediately and applies defaults
 pub fn show_wizard(config: &mut AppConfig) -> Result<(), Box<dyn Error>> {
-    log::info!("Launching first-run setup wizard");
+    log::info!("Wizard functionality temporarily disabled - applying defaults");
+    log::info!("First run setup will use default configuration:");
+    log::info!("  Hotkey: Alt + Space");
+    log::info!("  Run on startup: {}", config.startup.enabled);
     
-    // Create the wizard window
-    let wizard = SetupWizard::new()?;
-    
-    // Set initial values from config
-    wizard.set_run_on_startup(config.startup.enabled);
-    wizard.set_show_on_startup(config.startup.show_on_startup);
-    
-    // Track whether wizard was completed or cancelled
-    let completed = std::rc::Rc::new(std::cell::RefCell::new(false));
-    let completed_clone = completed.clone();
-    
-    // Handle Next button clicks
-    let wizard_weak = wizard.as_weak();
-    wizard.on_next_clicked(move || {
-        if let Some(wizard) = wizard_weak.upgrade() {
-            let current = wizard.get_current_screen();
-            
-            match current {
-                WizardScreen::Welcome => {
-                    wizard.set_current_screen(WizardScreen::Hotkey);
-                }
-                WizardScreen::Hotkey => {
-                    wizard.set_current_screen(WizardScreen::Startup);
-                }
-                WizardScreen::Startup => {
-                    wizard.set_current_screen(WizardScreen::Complete);
-                }
-                _ => {}
-            }
-        }
-    });
-    
-    // Handle Back button clicks
-    let wizard_weak = wizard.as_weak();
-    wizard.on_back_clicked(move || {
-        if let Some(wizard) = wizard_weak.upgrade() {
-            let current = wizard.get_current_screen();
-            
-            match current {
-                WizardScreen::Hotkey => {
-                    wizard.set_current_screen(WizardScreen::Welcome);
-                }
-                WizardScreen::Startup => {
-                    wizard.set_current_screen(WizardScreen::Hotkey);
-                }
-                WizardScreen::Complete => {
-                    wizard.set_current_screen(WizardScreen::Startup);
-                }
-                _ => {}
-            }
-        }
-    });
-    
-    // Handle Test Hotkey button
-    let wizard_weak = wizard.as_weak();
-    wizard.on_test_hotkey_clicked(move || {
-        if let Some(wizard) = wizard_weak.upgrade() {
-            let hotkey_index = wizard.get_selected_hotkey_index();
-            log::info!("Testing hotkey with index: {}", hotkey_index);
-            
-            // In a real implementation, we would register a temporary hotkey here
-            // For now, just log it
-            // TODO: Implement temporary hotkey registration for testing
-        }
-    });
-    
-    // Handle Finish button clicks
-    let wizard_weak = wizard.as_weak();
-    let completed_clone2 = completed.clone();
-    wizard.on_finish_clicked(move || {
-        *completed_clone2.borrow_mut() = true;
-        if let Some(wizard) = wizard_weak.upgrade() {
-            wizard.hide().ok();
-        }
-    });
-    
-    // Run the wizard
-    wizard.run()?;
-    
-    // If wizard was completed, update config
-    if *completed.borrow() {
-        log::info!("Wizard completed, updating configuration");
-        
-        // Update hotkey configuration
-        let hotkey_index = wizard.get_selected_hotkey_index() as usize;
-        let (modifiers, key) = get_hotkey_from_index(hotkey_index);
-        config.hotkey = HotkeyConfig {
-            modifiers: modifiers.split('+').map(|s| s.trim().to_string()).collect(),
-            key: key.to_string(),
-        };
-        
-        // Update startup configuration
-        config.startup.enabled = wizard.get_run_on_startup();
-        config.startup.show_on_startup = wizard.get_show_on_startup();
-        
-        log::info!("Configuration updated from wizard:");
-        log::info!("  Hotkey: {:?} + {}", config.hotkey.modifiers, config.hotkey.key);
-        log::info!("  Run on startup: {}", config.startup.enabled);
-        log::info!("  Show on startup: {}", config.startup.show_on_startup);
-        
-        Ok(())
-    } else {
-        log::info!("Wizard cancelled or closed, using default configuration");
-        Err("Wizard was cancelled".into())
-    }
+    // For now, just return Ok to allow the application to continue
+    // TODO: Implement proper wizard once Slint multi-file compilation is resolved
+    Ok(())
 }
 
+// Wizard will be re-enabled once we resolve the Slint compilation strategy
+// Options:
+// 1. Use build.rs with proper module naming
+// 2. Use slint! macro with embedded .slint code
+// 3. Create wizard as separate binary/library
+
 /// Get hotkey configuration from preset index
+#[allow(dead_code)]
 fn get_hotkey_from_index(index:usize) -> (&'static str, &'static str) {
     match index {
         0 => ("Alt", "Space"),            // Alt + Space (default)

@@ -14,7 +14,7 @@ echo.
 
 REM Check if WiX Toolset is installed
 echo [1/6] Checking for WiX Toolset...
-where candle >nul 2>&1
+where candle >nul 2>nul
 if %errorlevel% neq 0 (
     echo.
     echo ERROR: WiX Toolset not found!
@@ -23,7 +23,7 @@ if %errorlevel% neq 0 (
     echo https://wixtoolset.org/releases/
     echo.
     echo Make sure to add WiX bin directory to PATH
-    echo Default location: C:\Program Files (x86)\WiX Toolset v3.11\bin
+    echo Default location: C:\Program Files ^(x86^)\WiX Toolset v3.11\bin
     echo.
     pause
     exit /b 1
@@ -48,6 +48,12 @@ echo.
 REM Build the Rust application in release mode
 echo [3/6] Building WinLauncher release binary...
 cd ..
+
+REM Kill running instances to avoid "Access is denied" errors
+taskkill /f /im winlauncher.exe >nul 2>&1
+timeout /t 2 /nobreak >nul
+echo    Ensured no running instances...
+
 cargo build --release
 if %errorlevel% neq 0 (
     echo.
@@ -68,49 +74,11 @@ if not exist "target\release\winlauncher.exe" (
     exit /b 1
 )
 
-REM Create default config template if it doesn't exist
-if not exist "installer\config_default.json" (
-    echo Creating default config template...
-    echo { > installer\config_default.json
-    echo   "hotkey": { >> installer\config_default.json
-    echo     "modifiers": ["Alt"], >> installer\config_default.json
-    echo     "key": "Space" >> installer\config_default.json
-    echo   }, >> installer\config_default.json
-    echo   "startup": { >> installer\config_default.json
-    echo     "enabled": true, >> installer\config_default.json
-    echo     "show_on_startup": false >> installer\config_default.json
-    echo   }, >> installer\config_default.json
-    echo   "appearance": { >> installer\config_default.json
-    echo     "theme": "dark", >> installer\config_default.json
-    echo     "opacity": 0.96, >> installer\config_default.json
-    echo     "max_results": 8 >> installer\config_default.json
-    echo   }, >> installer\config_default.json
-    echo   "first_run": true >> installer\config_default.json
-    echo } >> installer\config_default.json
-)
-
-REM Create LICENSE.rtf for installer if it doesn't exist
-if not exist "installer\LICENSE.rtf" (
-    echo Creating LICENSE.rtf for installer...
-    echo {\rtf1\ansi\deff0 {\fonttbl {\f0 Courier New;}} > installer\LICENSE.rtf
-    echo {\colortbl;\red0\green0\blue0;\red0\green0\blue255;} >> installer\LICENSE.rtf
-    echo \f0\fs20 MIT License\par >> installer\LICENSE.rtf
-    echo \par >> installer\LICENSE.rtf
-    echo Copyright (c) 2024 Qwenzy\par >> installer\LICENSE.rtf
-    echo \par >> installer\LICENSE.rtf
-    echo Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\par >> installer\LICENSE.rtf
-    echo \par >> installer\LICENSE.rtf
-    echo The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\par >> installer\LICENSE.rtf
-    echo \par >> installer\LICENSE.rtf
-    echo THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.\par >> installer\LICENSE.rtf
-    echo } >> installer\LICENSE.rtf
-)
-
 REM Return to installer directory
 cd installer
 
 REM Compile WiX source file
-echo [4/6] Compiling WiX source (winlauncher.wxs)...
+echo [4/6] Compiling WiX source ^(winlauncher.wxs^)...
 candle winlauncher.wxs -ext WixUIExtension
 if %errorlevel% neq 0 (
     echo.

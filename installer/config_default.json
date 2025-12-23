@@ -1,0 +1,17 @@
+{
+  "hotkey": {
+    "modifiers": ["Alt"],
+    "key": "Space"
+  },
+  "startup": {
+    "enabled": true,
+    "show_on_startup": false
+  },
+  "appearance": {
+    "theme": "dark",
+    "opacity": 0.96,
+    "max_results": 8
+  },
+  "mru": {},
+  "first_run": true
+}

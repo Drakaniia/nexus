@@ -7,7 +7,7 @@ authors = ["Qwenzy"]
 
 [dependencies]
 # UI Framework - Slint for lightweight, GPU-accelerated UI
-slint = "1.9"
+slint = { version = "1.9", features = ["raw-window-handle-06"] }
 
 # Windows API bindings
 windows = { version = "0.58", features = [
@@ -27,6 +27,9 @@ windows = { version = "0.58", features = [
 
 # Global hotkey support
 global-hotkey = "0.6"
+
+# Raw window handle for platform-specific window manipulation
+raw-window-handle = "0.6"
 
 # System tray integration
 tray-icon = "0.19"

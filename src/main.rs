@@ -22,6 +22,7 @@ slint::include_modules!();
 mod actions;
 mod app_discovery;
 mod config;
+mod platform_window;
 mod search;
 mod single_instance;
 mod startup;
@@ -371,9 +372,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             // Position window first using Slint's built-in method
                             launcher.window().set_position(position);
                             
-                            // Show the window
+                            // Show the window FIRST (required for window handle to be valid)
                             launcher.show().ok();
                             launcher.set_is_visible(true);
+                            
+                            // Configure platform-specific window styles (no taskbar, topmost)
+                            // This MUST happen after show() to ensure HWND is valid
+                            if let Err(e) = platform_window::configure_launcher_window(launcher.window()) {
+                                log::warn!("Failed to configure window styles: {}", e);
+                            }
                             
                             // Clear search and focus input
                             launcher.invoke_clear_search();
@@ -409,9 +416,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // Position window first using Slint's built-in method
                         launcher.window().set_position(position);
                         
-                        // Show the window
+                        // Show the window FIRST (required for window handle to be valid)
                         launcher.show().ok();
                         launcher.set_is_visible(true);
+                        
+                        // Configure platform-specific window styles (no taskbar, topmost)
+                        if let Err(e) = platform_window::configure_launcher_window(launcher.window()) {
+                            log::warn!("Failed to configure window styles: {}", e);
+                        }
                         
                         launcher.invoke_clear_search();
                         launcher.set_selected_index(0);
@@ -433,6 +445,47 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
             }
+        }
+    });
+
+    // === HANDLE WINDOW FOCUS LOSS - AUTO HIDE ===
+    // Monitor if the window loses focus and auto-hide it
+    let launcher_weak_focus = launcher_weak.clone();
+    let app_running_focus = Arc::clone(&app_running);
+
+    std::thread::spawn(move || {
+        loop {
+            if !app_running_focus.load(Ordering::Relaxed) {
+                break;
+            }
+
+            // Check every 100ms if window lost focus
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            
+            // Check if our window is the foreground window
+            // Get the foreground window HWND as isize (can be sent between threads)
+            let foreground_hwnd_raw = unsafe {
+                use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+                let foreground = GetForegroundWindow();
+                foreground.0 as isize
+            };
+            
+            // Get our window's HWND and check if we have focus
+            let _ = launcher_weak_focus.upgrade_in_event_loop(move |launcher| {
+                if launcher.get_is_visible() {
+                    // Get our window handle
+                    if let Some(our_hwnd) = platform_window::get_window_hwnd(launcher.window()) {
+                        let our_hwnd_raw = our_hwnd.0 as isize;
+                        
+                        // If foreground window is not ours, hide the launcher
+                        if foreground_hwnd_raw != our_hwnd_raw {
+                            log::debug!("Focus lost (foreground window changed) - hiding launcher");
+                            launcher.hide().ok();
+                            launcher.set_is_visible(false);
+                        }
+                    }
+                }
+            });
         }
     });
 

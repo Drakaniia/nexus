@@ -27,6 +27,7 @@ mod search;
 mod single_instance;
 mod startup;
 mod tray;
+mod wizard;
 
 use config::AppConfig;
 use single_instance::SingleInstance;
@@ -287,15 +288,47 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // === LOAD CONFIGURATION ===
     let mut config = AppConfig::load();
     
-    // First run setup
+    // First run setup - show wizard if first run
     if config.is_first_run() {
-        log::info!("First run detected - registering startup");
-        if config.startup.enabled {
-            if let Err(e) = startup::enable_startup() {
-                log::warn!("Failed to enable startup: {}", e);
+        log::info!("First run detected, showing setup wizard");
+        
+        // Show the wizard and let user configure the application
+        match wizard::show_wizard(&mut config) {
+            Ok(_) => {
+                log::info!("Wizard completed successfully");
+                
+                // Apply startup registration based on wizard settings
+                if config.startup.enabled {
+                    if let Err(e) = startup::enable_startup() {
+                        log::warn!("Failed to enable startup: {}", e);
+                    }
+                } else {
+                    // Ensure startup is disabled if user unchecked it
+                    if let Err(e) = startup::disable_startup() {
+                        log::warn!("Failed to disable startup: {}", e);
+                    }
+                }
+                
+                // Mark first run as complete
+                config.complete_first_run();
+                config.save();
+            }
+            Err(e) => {
+                log::warn!("Wizard error or cancelled: {}", e);
+                log::info!("Continuing with default configuration");
+                
+                // Still register startup if enabled in default config
+                if config.startup.enabled {
+                    if let Err(e) = startup::enable_startup() {
+                        log::warn!("Failed to enable startup: {}", e);
+                    }
+                }
+                
+                // Mark as completed even if wizard failed/cancelled
+                config.complete_first_run();
+                config.save();
             }
         }
-        config.complete_first_run();
     }
 
     // === CREATE SYSTEM TRAY ===

@@ -28,6 +28,8 @@ mod single_instance;
 mod startup;
 mod tray;
 mod wizard;
+mod settings_ui;
+mod updater;
 
 use config::AppConfig;
 use single_instance::SingleInstance;
@@ -351,7 +353,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let launcher_weak = launcher.as_weak();
 
     // Initialize application state with config
-    let state = Arc::new(Mutex::new(LauncherState::new(config)));
+    let state = Arc::new(Mutex::new(LauncherState::new(config.clone())));
     let current_results: Arc<Mutex<Vec<SearchResultData>>> = Arc::new(Mutex::new(Vec::new()));
     
     // Flag to control app running state
@@ -395,7 +397,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let position = get_window_center_position();
                     log::info!("Alt+Space pressed, centering window at ({}, {})", position.x, position.y);
                     
-                    let _ = launcher_weak_hotkey.upgrade_in_event_loop(move |launcher| {
+                    let _ = launcher_weak_hotkey.upgrade_in_event_loop(move |launcher: Launcher| {
                         let is_visible = launcher.get_is_visible();
                         if is_visible {
                             launcher.hide().ok();
@@ -432,6 +434,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // because MenuEvent::receiver() is a global static
     let launcher_weak_tray = launcher_weak.clone();
     let app_running_tray = Arc::clone(&app_running);
+    let config_for_tray = config.clone();
 
     std::thread::spawn(move || {
         loop {
@@ -445,7 +448,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // Get window position before upgrading
                     let position = get_window_center_position();
                     
-                    let _ = launcher_weak_tray.upgrade_in_event_loop(move |launcher| {
+                    let _ = launcher_weak_tray.upgrade_in_event_loop(move |launcher: Launcher| {
                         // Position window first using Slint's built-in method
                         launcher.window().set_position(position);
                         
@@ -464,8 +467,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     });
                 }
                 TrayEvent::Settings => {
-                    log::info!("Tray: Settings clicked (not implemented yet)");
-                    // TODO: Show settings dialog
+                    log::info!("Tray: Settings clicked");
+                    let config_clone = config_for_tray.clone();
+                    
+                    let launcher_weak_settings = launcher_weak_tray.clone();
+                    
+                    // Use a thread to show the settings window
+                    // In a more complex app we would track the window instance
+                    // but for now we'll just spawn it
+                    let _ = std::thread::spawn(move || {
+                        if let Err(e) = settings_ui::SettingsManager::show(&config_clone, launcher_weak_settings) {
+                            log::error!("Failed to show settings: {}", e);
+                        }
+                    });
                 }
                 TrayEvent::Exit => {
                     log::info!("Tray: Exit clicked - shutting down");
@@ -504,7 +518,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             
             // Get our window's HWND and check if we have focus
-            let _ = launcher_weak_focus.upgrade_in_event_loop(move |launcher| {
+            let _ = launcher_weak_focus.upgrade_in_event_loop(move |launcher: Launcher| {
                 if launcher.get_is_visible() {
                     // Get our window handle
                     if let Some(our_hwnd) = platform_window::get_window_hwnd(launcher.window()) {
@@ -528,7 +542,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let current_results = Arc::clone(&current_results);
         let launcher_weak_search = launcher_weak.clone();
         
-        launcher.on_search_changed(move |query| {
+        launcher.on_search_changed(move |query: slint::SharedString| {
             let query_str = query.to_string();
             log::debug!("Search changed: '{}'", query_str);
             
@@ -538,7 +552,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     results.clear();
                 }
                 // Update UI immediately
-                let _ = launcher_weak_search.upgrade_in_event_loop(|launcher| {
+                let _ = launcher_weak_search.upgrade_in_event_loop(|launcher: Launcher| {
                     let model = std::rc::Rc::new(VecModel::<SearchResult>::default());
                     launcher.set_results(model.into());
                     launcher.set_selected_index(0);
@@ -562,7 +576,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Update UI IMMEDIATELY (not in polling thread)
             let slint_results: Vec<SearchResult> = search_results.iter().map(|r| r.into()).collect();
-            let _ = launcher_weak_search.upgrade_in_event_loop(move |launcher| {
+            let _ = launcher_weak_search.upgrade_in_event_loop(move |launcher: Launcher| {
                 let model = std::rc::Rc::new(VecModel::from(slint_results));
                 launcher.set_results(model.into());
                 launcher.set_selected_index(0);
@@ -624,7 +638,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
 
                     // Hide the launcher (but keep running in background!)
-                    let _ = launcher_weak.upgrade_in_event_loop(|launcher| {
+                    let _ = launcher_weak.upgrade_in_event_loop(|launcher: Launcher| {
                         launcher.hide().ok();
                         launcher.set_is_visible(false);
                     });
@@ -639,7 +653,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let launcher_weak = launcher_weak.clone();
         launcher.on_escape_pressed(move || {
-            let _ = launcher_weak.upgrade_in_event_loop(|launcher| {
+            let _ = launcher_weak.upgrade_in_event_loop(|launcher: Launcher| {
                 launcher.hide().ok();
                 launcher.set_is_visible(false);
             });
@@ -650,7 +664,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let launcher_weak_up = launcher_weak.clone();
         launcher.on_arrow_up(move || {
-            let _ = launcher_weak_up.upgrade_in_event_loop(|launcher| {
+            let _ = launcher_weak_up.upgrade_in_event_loop(|launcher: Launcher| {
                 let current = launcher.get_selected_index();
                 if current > 0 {
                     launcher.set_selected_index(current - 1);
@@ -662,7 +676,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let launcher_weak_down = launcher_weak.clone();
         launcher.on_arrow_down(move || {
-            let _ = launcher_weak_down.upgrade_in_event_loop(|launcher| {
+            let _ = launcher_weak_down.upgrade_in_event_loop(|launcher: Launcher| {
                 let current = launcher.get_selected_index();
                 let result_count = launcher.get_results().row_count() as i32;
                 if current < result_count - 1 {

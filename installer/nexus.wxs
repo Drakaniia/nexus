@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <?define ProductVersion = "1.0.0" ?>
+  <?define ProductName = "Nexus" ?>
+  <?define Manufacturer = "Qwenzy" ?>
+  
+  <!-- 
+    IMPORTANT: This UpgradeCode must remain constant across all versions
+    Change ProductId for each new version to enable upgrades
+  -->
+  
+  <Product Id="*" 
+           Name="$(var.ProductName)" 
+           Language="1033" 
+           Version="$(var.ProductVersion)" 
+           Manufacturer="$(var.Manufacturer)" 
+           UpgradeCode="A1B2C3D4-E5F6-4789-A0B1-C2D3E4F5A6B7">
+    
+    <Package InstallerVersion="200" 
+             Compressed="yes" 
+             InstallScope="perMachine"
+             Description="$(var.ProductName) - A lightweight Windows launcher application"
+             Comments="Visit https://github.com/Drakaniia/nexus for more information" />
+
+    <!-- Ensure only one version is installed at a time -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed."
+                  AllowSameVersionUpgrades="no" />
+    
+    <!-- Embed CAB file in MSI for single-file distribution -->
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Custom properties -->
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/Drakaniia/nexus" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/Drakaniia/nexus" />
+    <Property Id="ARPNOREPAIR" Value="yes" Secure="yes" />
+    
+    <!-- Launch application after install -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch Nexus" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    
+    <!-- Startup registration property -->
+    <Property Id="RUNONSTARTUP" Value="1" />
+
+    <!-- Feature: Complete installation -->
+    <Feature Id="ProductFeature" Title="Nexus" Level="1" 
+             Description="Complete Nexus installation"
+             ConfigurableDirectory="INSTALLFOLDER">
+      <ComponentGroupRef Id="ProductComponents" />
+      <ComponentGroupRef Id="ShortcutComponents" />
+      <ComponentGroupRef Id="RegistryComponents" />
+    </Feature>
+
+    <!-- UI Configuration -->
+    <UI>
+      <!-- Use WixUI_InstallDir dialog set -->
+      <UIRef Id="WixUI_InstallDir" />
+      <UIRef Id="WixUI_ErrorProgressText" />
+      
+      <!-- Custom welcome banner and dialog images (optional) -->
+      <!-- 
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg">1</Publish>
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg">1</Publish>
+      -->
+    </UI>
+
+    <!-- License agreement (using MIT license) -->
+    <WixVariable Id="WixUILicenseRtf" Value="LICENSE.rtf" />
+
+    <!-- Directory structure -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <!-- Program Files folder -->
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="$(var.ProductName)">
+          <!-- Main application files go here -->
+        </Directory>
+      </Directory>
+      
+      <!-- Start Menu -->
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="$(var.ProductName)">
+          <!-- Start menu shortcuts -->
+        </Directory>
+      </Directory>
+      
+      <!-- Desktop -->
+      <Directory Id="DesktopFolder" Name="Desktop" />
+    </Directory>
+
+    <!-- Component Group: Main application files -->
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <!-- Main executable -->
+      <Component Id="MainExecutable" Guid="B2C3D4E5-F6A7-4890-B1C2-D3E4F5A6B7C8">
+        <File Id="NexusEXE" 
+              Source="..\target\release\nexus.exe" 
+              KeyPath="yes"
+              Checksum="yes">
+          <!-- Add to Windows Firewall exception if needed -->
+        </File>
+      </Component>
+      
+      <!-- Default configuration template -->
+      <Component Id="ConfigTemplate" Guid="C3D4E5F6-A7B8-4901-C2D3-E4F5A6B7C8D9">
+        <File Id="ConfigTemplateJSON" 
+              Source="config_default.json" 
+              KeyPath="yes" />
+      </Component>
+      
+      <!-- README file -->
+      <Component Id="ReadmeFile" Guid="D4E5F6A7-B8C9-4012-D3E4-F5A6B7C8D9E0">
+        <File Id="ReadmeTXT" 
+              Source="..\README.md" 
+              KeyPath="yes" 
+              Name="README.txt" />
+      </Component>
+      
+      <!-- License file -->
+      <Component Id="LicenseFile" Guid="E5F6A7B8-C9D0-4123-E4F5-A6B7C8D9E0F1">
+        <File Id="LicenseTXT" 
+              Source="LICENSE.rtf" 
+              KeyPath="yes" 
+              Name="LICENSE.rtf" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Component Group: Shortcuts -->
+    <ComponentGroup Id="ShortcutComponents">
+      <!-- Start Menu shortcuts -->
+      <Component Id="StartMenuShortcuts" 
+                 Directory="ApplicationProgramsFolder" 
+                 Guid="F6A7B8C9-D0E1-4234-F5A6-B7C8D9E0F1A2">
+        
+        <!-- Main application shortcut -->
+        <Shortcut Id="ApplicationStartMenuShortcut"
+                  Name="$(var.ProductName)"
+                  Description="Launch Nexus - Press Alt+Space to search"
+                  Target="[INSTALLFOLDER]nexus.exe"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="AppIcon.ico" />
+        
+        <!-- Uninstall shortcut -->
+        <Shortcut Id="UninstallShortcut"
+                  Name="Uninstall $(var.ProductName)"
+                  Description="Uninstall Nexus"
+                  Target="[SystemFolder]msiexec.exe"
+                  Arguments="/x [ProductCode]" />
+        
+        <!-- Required for Start Menu folder creation -->
+        <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall" />
+        
+        <RegistryValue Root="HKCU" 
+                       Key="Software\$(var.Manufacturer)\$(var.ProductName)" 
+                       Name="StartMenuShortcuts" 
+                       Type="integer" 
+                       Value="1" 
+                       KeyPath="yes" />
+      </Component>
+      
+      <!-- Desktop shortcut (optional) -->
+      <Component Id="DesktopShortcut" 
+                 Directory="DesktopFolder" 
+                 Guid="A7B8C9D0-E1F2-4345-A6B7-C8D9E0F1A2B3">
+        <Shortcut Id="ApplicationDesktopShortcut"
+                  Name="$(var.ProductName)"
+                  Description="Launch Nexus - Press Alt+Space to search"
+                  Target="[INSTALLFOLDER]nexus.exe"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="AppIcon.ico" />
+        
+        <RegistryValue Root="HKCU" 
+                       Key="Software\$(var.Manufacturer)\$(var.ProductName)" 
+                       Name="DesktopShortcut" 
+                       Type="integer" 
+                       Value="1" 
+                       KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Component Group: Registry entries -->
+    <ComponentGroup Id="RegistryComponents">
+      <!-- Startup registration (conditional on RUNONSTARTUP property) -->
+      <Component Id="StartupRegistry" 
+                 Directory="INSTALLFOLDER" 
+                 Guid="B8C9D0E1-F2A3-4456-B7C8-D9E0F1A2B3C4">
+        <Condition>RUNONSTARTUP = 1</Condition>
+        
+        <RegistryValue Root="HKCU" 
+                       Key="Software\Microsoft\Windows\CurrentVersion\Run" 
+                       Name="$(var.ProductName)" 
+                       Type="string" 
+                       Value="&quot;[INSTALLFOLDER]nexus.exe&quot;" 
+                       KeyPath="yes" />
+      </Component>
+      
+      <!-- Application configuration registry keys -->
+      <Component Id="ConfigRegistry" 
+                 Directory="INSTALLFOLDER" 
+                 Guid="C9D0E1F2-A3B4-4567-C8D9-E0F1A2B3C4D5">
+        
+        <!-- Default hotkey setting -->
+        <RegistryValue Root="HKCU" 
+                       Key="Software\$(var.Manufacturer)\$(var.ProductName)\Settings" 
+                       Name="Hotkey" 
+                       Type="string" 
+                       Value="Alt+Space" 
+                       KeyPath="yes" />
+        
+        <!-- First run flag -->
+        <RegistryValue Root="HKCU" 
+                       Key="Software\$(var.Manufacturer)\$(var.ProductName)\Settings" 
+                       Name="FirstRun" 
+                       Type="integer" 
+                       Value="1" 
+                       KeyPath="no" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Icon definition - using PNG converted to ICO or placeholder -->
+    <Icon Id="AppIcon.ico" SourceFile="..\installerassets\icon.ico" />
+
+    <!-- Custom actions -->
+    <CustomAction Id="LaunchApplication"
+                  FileKey="NexusEXE"
+                  ExeCommand=""
+                  Execute="immediate"
+                  Impersonate="yes"
+                  Return="asyncNoWait" />
+
+    <!-- Launch app after successful installation if checkbox is checked -->
+    <Property Id="LAUNCHAPPONEXIT" Value="1" />
+    <InstallExecuteSequence>
+      <Custom Action="LaunchApplication" After="InstallFinalize">
+        (NOT Installed) AND (LAUNCHAPPONEXIT = 1)
+      </Custom>
+    </InstallExecuteSequence>
+    
+  </Product>
+</Wix>

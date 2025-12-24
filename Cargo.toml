@@ -1,5 +1,5 @@
 [package]
-name = "winlauncher"
+name = "nexus"
 version = "0.1.0"
 edition = "2021"
 description = "A lightweight Windows launcher application"

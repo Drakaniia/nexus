@@ -1,5 +1,5 @@
 //! Configuration Management Module
-//! Handles loading/saving application settings to %APPDATA%\WinLauncher\config.json
+//! Handles loading/saving application settings to %APPDATA%\Nexus\config.json
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -224,7 +224,7 @@ impl Default for UpdateConfig {
 impl AppConfig {
     /// Get the configuration directory path
     pub fn config_dir() -> Option<PathBuf> {
-        dirs::config_dir().map(|p| p.join("WinLauncher"))
+        dirs::config_dir().map(|p| p.join("Nexus"))
     }
 
     /// Get the configuration file path

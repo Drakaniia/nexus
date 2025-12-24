@@ -13,7 +13,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 pub const WM_SHOW_LAUNCHER: u32 = WM_USER + 100;
 
 /// Mutex name for single instance check
-const MUTEX_NAME: &str = "Global\\WinLauncher_SingleInstance_Mutex";
+const MUTEX_NAME: &str = "Global\\Nexus_SingleInstance_Mutex";
 
 /// Manages single instance enforcement
 pub struct SingleInstance {
@@ -61,10 +61,17 @@ impl SingleInstance {
     /// Signal the existing instance to show its window
     fn signal_existing_instance() {
         log::info!("Another instance detected, signaling to show...");
-        
+
         unsafe {
             // Find the existing launcher window and bring it to foreground
             let _ = EnumWindows(Some(enum_windows_callback), LPARAM(0));
+        }
+
+        // Also create a signal file that the running instance can check
+        if let Some(config_dir) = crate::config::AppConfig::config_dir() {
+            let signal_file = config_dir.join("show_signal");
+            let _ = std::fs::write(&signal_file, "show");
+            log::info!("Created show signal file: {:?}", signal_file);
         }
     }
 
@@ -106,7 +113,7 @@ unsafe extern "system" fn enum_windows_callback(hwnd: HWND, _lparam: LPARAM) -> 
         let title_str = String::from_utf8_lossy(&title[..len as usize]);
         
         // Check if this is our launcher window
-        if title_str.contains("WinLauncher") || title_str.contains("Launcher") {
+        if title_str.contains("Nexus") || title_str.contains("Launcher") {
             log::info!("Found existing launcher window, bringing to foreground");
             
             // Restore and bring to foreground

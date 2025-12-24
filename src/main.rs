@@ -1,4 +1,4 @@
-//! Windows Launcher Application
+//! Nexus - Windows Launcher Application
 //! A lightweight, fast launcher with modern Windows 11 aesthetics
 
 #![windows_subsystem = "windows"]
@@ -34,6 +34,95 @@ mod updater;
 use config::AppConfig;
 use single_instance::SingleInstance;
 use tray::{TrayEvent, TrayManager, check_tray_event};
+
+/// Parse modifier string to Modifiers enum
+fn parse_modifier(modifier: &str) -> Option<Modifiers> {
+    match modifier.to_lowercase().as_str() {
+        "alt" => Some(Modifiers::ALT),
+        "ctrl" | "control" => Some(Modifiers::CONTROL),
+        "shift" => Some(Modifiers::SHIFT),
+        "win" | "super" | "meta" => Some(Modifiers::META),
+        _ => None,
+    }
+}
+
+/// Parse key string to Code enum
+fn parse_key(key: &str) -> Option<Code> {
+    match key.to_lowercase().as_str() {
+        "space" => Some(Code::Space),
+        "enter" | "return" => Some(Code::Enter),
+        "escape" | "esc" => Some(Code::Escape),
+        "tab" => Some(Code::Tab),
+        "backspace" => Some(Code::Backspace),
+        "delete" => Some(Code::Delete),
+        "home" => Some(Code::Home),
+        "end" => Some(Code::End),
+        "pageup" => Some(Code::PageUp),
+        "pagedown" => Some(Code::PageDown),
+        "arrowup" | "uparrow" => Some(Code::ArrowUp),
+        "arrowdown" | "downarrow" => Some(Code::ArrowDown),
+        "arrowleft" | "leftarrow" => Some(Code::ArrowLeft),
+        "arrowright" | "rightarrow" => Some(Code::ArrowRight),
+        "f1" => Some(Code::F1),
+        "f2" => Some(Code::F2),
+        "f3" => Some(Code::F3),
+        "f4" => Some(Code::F4),
+        "f5" => Some(Code::F5),
+        "f6" => Some(Code::F6),
+        "f7" => Some(Code::F7),
+        "f8" => Some(Code::F8),
+        "f9" => Some(Code::F9),
+        "f10" => Some(Code::F10),
+        "f11" => Some(Code::F11),
+        "f12" => Some(Code::F12),
+        // Add single letter keys for common shortcuts
+        "a" => Some(Code::KeyA),
+        "b" => Some(Code::KeyB),
+        "c" => Some(Code::KeyC),
+        "d" => Some(Code::KeyD),
+        "e" => Some(Code::KeyE),
+        "f" => Some(Code::KeyF),
+        "g" => Some(Code::KeyG),
+        "h" => Some(Code::KeyH),
+        "i" => Some(Code::KeyI),
+        "j" => Some(Code::KeyJ),
+        "k" => Some(Code::KeyK),
+        "l" => Some(Code::KeyL),
+        "m" => Some(Code::KeyM),
+        "n" => Some(Code::KeyN),
+        "o" => Some(Code::KeyO),
+        "p" => Some(Code::KeyP),
+        "q" => Some(Code::KeyQ),
+        "r" => Some(Code::KeyR),
+        "s" => Some(Code::KeyS),
+        "t" => Some(Code::KeyT),
+        "u" => Some(Code::KeyU),
+        "v" => Some(Code::KeyV),
+        "w" => Some(Code::KeyW),
+        "x" => Some(Code::KeyX),
+        "y" => Some(Code::KeyY),
+        "z" => Some(Code::KeyZ),
+        _ => None,
+    }
+}
+
+/// Create a HotKey from config
+fn create_hotkey_from_config(config: &AppConfig) -> Result<HotKey, String> {
+    // For now, support only the first modifier (simplified implementation)
+    let modifier_opt = if config.hotkey.modifiers.is_empty() {
+        None
+    } else {
+        Some(parse_modifier(&config.hotkey.modifiers[0])
+            .ok_or_else(|| format!("Unknown modifier: {}", config.hotkey.modifiers[0]))?)
+    };
+
+    // Parse key
+    let key = parse_key(&config.hotkey.key)
+        .ok_or_else(|| format!("Unknown key: {}", config.hotkey.key))?;
+
+    // Create hotkey
+    Ok(HotKey::new(modifier_opt, key))
+}
 
 /// Application state
 struct LauncherState {
@@ -273,7 +362,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         env_logger::Env::default().default_filter_or("info")
     ).init();
 
-    log::info!("Starting WinLauncher...");
+    log::info!("Starting Nexus...");
 
     // === SINGLE INSTANCE CHECK (must be first!) ===
     let _instance_lock = match SingleInstance::acquire() {
@@ -373,17 +462,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Set up global hotkey (Alt+Space)
+    // Set up global hotkey from config
     let hotkey_manager = GlobalHotKeyManager::new()?;
-    let hotkey = HotKey::new(Some(Modifiers::ALT), Code::Space);
+    let hotkey = create_hotkey_from_config(&config)
+        .map_err(|e| format!("Failed to create hotkey from config: {}", e))?;
     let hotkey_id = hotkey.id();
-    hotkey_manager.register(hotkey)?;
-    log::info!("Registered Alt+Space hotkey");
+    hotkey_manager.register(hotkey.clone())?;
+    log::info!("Registered hotkey: {} + {}", config.hotkey.modifiers.join("+"), config.hotkey.key);
+
+    // Track when the window was last shown to avoid immediate hiding due to focus race condition
+    let last_shown_time = Arc::new(Mutex::new(std::time::Instant::now() - std::time::Duration::from_secs(10))); // Start with old timestamp
 
     // Handle hotkey events
     let launcher_weak_hotkey = launcher_weak.clone();
     let receiver = GlobalHotKeyEvent::receiver();
     let app_running_hotkey = Arc::clone(&app_running);
+    let last_shown_time_hotkey = Arc::clone(&last_shown_time);
 
     std::thread::spawn(move || {
         loop {
@@ -395,8 +489,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if event.id == hotkey_id && event.state == HotKeyState::Pressed {
                     // Get window position BEFORE upgrading to event loop (avoid blocking main thread)
                     let position = get_window_center_position();
-                    log::info!("Alt+Space pressed, centering window at ({}, {})", position.x, position.y);
-                    
+                    log::info!("Hotkey pressed, centering window at ({}, {})", position.x, position.y);
+
+                    let last_shown_time_clone = Arc::clone(&last_shown_time_hotkey);
                     let _ = launcher_weak_hotkey.upgrade_in_event_loop(move |launcher: Launcher| {
                         let is_visible = launcher.get_is_visible();
                         if is_visible {
@@ -404,19 +499,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             launcher.set_is_visible(false);
                             log::debug!("Window hidden");
                         } else {
+                            // Update last shown time to prevent immediate hiding due to focus race
+                            *last_shown_time_clone.lock().unwrap() = std::time::Instant::now();
+
                             // Position window first using Slint's built-in method
                             launcher.window().set_position(position);
-                            
+
                             // Show the window FIRST (required for window handle to be valid)
                             launcher.show().ok();
                             launcher.set_is_visible(true);
-                            
+
                             // Configure platform-specific window styles (no taskbar, topmost)
                             // This MUST happen after show() to ensure HWND is valid
                             if let Err(e) = platform_window::configure_launcher_window(launcher.window()) {
                                 log::warn!("Failed to configure window styles: {}", e);
                             }
-                            
+
                             // Clear search and focus input
                             launcher.invoke_clear_search();
                             launcher.set_selected_index(0);
@@ -435,6 +533,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let launcher_weak_tray = launcher_weak.clone();
     let app_running_tray = Arc::clone(&app_running);
     let config_for_tray = config.clone();
+    let last_shown_time_tray = Arc::clone(&last_shown_time);
 
     std::thread::spawn(move || {
         loop {
@@ -447,20 +546,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     log::info!("Tray: Show clicked");
                     // Get window position before upgrading
                     let position = get_window_center_position();
-                    
+
+                    let last_shown_time_clone = Arc::clone(&last_shown_time_tray);
                     let _ = launcher_weak_tray.upgrade_in_event_loop(move |launcher: Launcher| {
+                        // Update last shown time to prevent immediate hiding due to focus race
+                        *last_shown_time_clone.lock().unwrap() = std::time::Instant::now();
+
                         // Position window first using Slint's built-in method
                         launcher.window().set_position(position);
-                        
+
                         // Show the window FIRST (required for window handle to be valid)
                         launcher.show().ok();
                         launcher.set_is_visible(true);
-                        
+
                         // Configure platform-specific window styles (no taskbar, topmost)
                         if let Err(e) = platform_window::configure_launcher_window(launcher.window()) {
                             log::warn!("Failed to configure window styles: {}", e);
                         }
-                        
+
                         launcher.invoke_clear_search();
                         launcher.set_selected_index(0);
                         launcher.invoke_focus_input();
@@ -484,8 +587,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 TrayEvent::Exit => {
                     log::info!("Tray: Exit clicked - shutting down");
                     app_running_tray.store(false, Ordering::Relaxed);
-                    // Exit the application
-                    std::process::exit(0);
+                    // The application will exit naturally when all threads stop
                 }
                 TrayEvent::None => {
                     // No event, sleep briefly to avoid busy loop
@@ -508,7 +610,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Check every 100ms if window lost focus
             std::thread::sleep(std::time::Duration::from_millis(100));
-            
+
             // Check if our window is the foreground window
             // Get the foreground window HWND as isize (can be sent between threads)
             let foreground_hwnd_raw = unsafe {
@@ -516,14 +618,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let foreground = GetForegroundWindow();
                 foreground.0 as isize
             };
-            
+
             // Get our window's HWND and check if we have focus
+            let last_shown = *last_shown_time.lock().unwrap();
             let _ = launcher_weak_focus.upgrade_in_event_loop(move |launcher: Launcher| {
                 if launcher.get_is_visible() {
+                    // Skip focus check for 500ms after window was shown to avoid race condition
+                    if last_shown.elapsed() < std::time::Duration::from_millis(500) {
+                        return;
+                    }
+
                     // Get our window handle
                     if let Some(our_hwnd) = platform_window::get_window_hwnd(launcher.window()) {
                         let our_hwnd_raw = our_hwnd.0 as isize;
-                        
+
                         // If foreground window is not ours, hide the launcher
                         if foreground_hwnd_raw != our_hwnd_raw {
                             log::debug!("Focus lost (foreground window changed) - hiding launcher");
@@ -694,7 +802,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Run the event loop
     log::info!("=== EVENT LOOP STARTING ===");
-    log::info!("WinLauncher ready. Press Alt+Space to activate. Running in system tray.");
+    log::info!("Nexus ready. Press Alt+Space to activate. Running in system tray.");
     log::info!("The event loop should run FOREVER until Exit is clicked in tray menu.");
     
     slint::run_event_loop()?;
@@ -704,7 +812,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     log::info!("This should ONLY appear when user explicitly exits via tray menu.");
     
     // Cleanup
-    log::info!("WinLauncher shutting down...");
+    log::info!("Nexus shutting down...");
     app_running.store(false, Ordering::Relaxed);
 
     Ok(())

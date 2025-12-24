@@ -46,7 +46,7 @@ impl TrayManager {
         // Create tray icon
         let builder = TrayIconBuilder::new()
             .with_menu(Box::new(tray_menu))
-            .with_tooltip("WinLauncher - Press Alt+Space to search");
+            .with_tooltip("Nexus - Press Alt+Space to search");
 
         // Try to load an icon from resources or use a default
         let tray_icon = if let Some(icon) = Self::load_icon() {

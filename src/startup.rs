@@ -16,7 +16,7 @@ use windows::Win32::System::Registry::{
 const STARTUP_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 
 /// App name in registry
-const APP_NAME: &str = "WinLauncher";
+const APP_NAME: &str = "Nexus";
 
 /// Enable startup - add to Windows startup programs
 pub fn enable_startup() -> Result<(), StartupError> {

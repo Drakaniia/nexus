@@ -1,4 +1,4 @@
-// First-Run Wizard UI for WinLauncher
+// First-Run Wizard UI for Nexus
 // Multi-screen configuration wizard shown on first application launch
 
 import { Button, VerticalBox, HorizontalBox, GroupBox, CheckBox } from "std-widgets.slint";
@@ -20,7 +20,7 @@ export struct HotkeyOption {
 
 // Main wizard window
 export component SetupWizard inherits Window {
-    title: "WinLauncher Setup Wizard";
+    title: "Nexus Setup Wizard";
     preferred-width: 600px;
     preferred-height: 450px;
     
@@ -70,7 +70,7 @@ export component SetupWizard inherits Window {
                     alignment: start;
                     
                     Text {
-                        text: "WinLauncher Setup";
+                        text: "Nexus Setup";
                         font-size: 18px;
                         font-weight: 700;
                         color: #FFFFFF;
@@ -112,7 +112,7 @@ export component SetupWizard inherits Window {
                 alignment: center;
                 
                 Text {
-                    text: "Welcome to WinLauncher! 🚀";
+                    text: "Welcome to Nexus! 🚀";
                     font-size: 24px;
                     font-weight: 700;
                     color: #FFFFFF;
@@ -233,7 +233,7 @@ export component SetupWizard inherits Window {
                 }
                 
                 Text {
-                    text: "This hotkey will open WinLauncher from anywhere in Windows";
+                    text: "This hotkey will open Nexus from anywhere in Windows";
                     font-size: 13px;
                     color: #999999;
                 }
@@ -333,7 +333,7 @@ HorizontalBox {
                 }
                 
                 Text {
-                    text: "Configure how WinLauncher starts with Windows";
+                    text: "Configure how Nexus starts with Windows";
                     font-size: 13px;
                     color: #999999;
                 }
@@ -347,7 +347,7 @@ HorizontalBox {
                         spacing: 15px;
                         
                         CheckBox {
-                            text: "Run WinLauncher on Windows startup (Recommended)";
+                            text: "Run Nexus on Windows startup (Recommended)";
                             checked <=> run-on-startup;
                         }
                         
@@ -377,7 +377,7 @@ HorizontalBox {
                         }
                         
                         Text {
-                            text: "• WinLauncher runs quietly in the system tray";
+                            text: "• Nexus runs quietly in the system tray";
                             font-size: 11px;
                             color: #CCCCCC;
                         }
@@ -412,7 +412,7 @@ HorizontalBox {
                 }
                 
                 Text {
-                    text: "WinLauncher is ready to use";
+                    text: "Nexus is ready to use";
                     font-size: 14px;
                     color: #CCCCCC;
                     horizontal-alignment: center;

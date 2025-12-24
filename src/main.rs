@@ -703,10 +703,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
 
-                    // Hide the launcher (but keep running in background!)
+                    // Keep launcher visible as a full desktop application
+                    // Clear search and reset selection for continued use
                     let _ = launcher_weak.upgrade_in_event_loop(|launcher: Launcher| {
-                        launcher.hide().ok();
-                        launcher.set_is_visible(false);
+                        launcher.invoke_clear_search();
+                        launcher.set_selected_index(0);
+                        // Launcher stays visible - user can continue searching
                     });
                 } else {
                     log::warn!("No result found at index {}", index);

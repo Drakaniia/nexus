@@ -1,4 +1,4 @@
-# WinLauncher First-Run Wizard Implementation Status
+# Nexus First-Run Wizard Implementation Status
 
 ## Summary
 The wizard UI has been simplified due to Slint std-widgets limitations. The current implementation uses:

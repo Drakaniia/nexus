@@ -38,7 +38,7 @@
 **Root Cause Analysis:**
 ```
 Current flow:
-1. User runs winlauncher.exe
+1. User runs nexus.exe
 2. Alt+Space works ONCE
 3. When window closes, entire app exits
 4. System tray icon disappears
@@ -56,14 +56,14 @@ Why it's failing:
 Fix the application persistence issue where the app exits after first use:
 
 CURRENT BEHAVIOR:
-- Run winlauncher.exe
+- Run nexus.exe
 - Press Alt+Space → window shows
 - Close window → ENTIRE APP EXITS (wrong!)
 - System tray icon disappears
 - Must manually run exe again
 
 REQUIRED BEHAVIOR:
-- Run winlauncher.exe ONCE
+- Run nexus.exe ONCE
 - Press Alt+Space → window shows
 - Close window → window hides, app STAYS RUNNING
 - System tray icon STAYS visible
@@ -94,7 +94,7 @@ FIX REQUIRED:
 
 4. Test manually:
    - Run exe from command line (not VS Code)
-   - Check Task Manager → Details → winlauncher.exe should STAY RUNNING
+   - Check Task Manager → Details → nexus.exe should STAY RUNNING
    - Close window, check Task Manager again → still running
    - Press Alt+Space again → should work immediately
 
@@ -117,10 +117,10 @@ Show me the exact code changes needed in src/main.rs to fix this persistence iss
 
 1. **Installation Location:**
    ```
-   Default: C:\Program Files\WinLauncher\
+   Default: C:\Program Files\Nexus\
    User-selectable during install
    Files to install:
-   - winlauncher.exe
+   - nexus.exe
    - config_default.json (template)
    - README.txt
    - LICENSE.txt
@@ -130,30 +130,30 @@ Show me the exact code changes needed in src/main.rs to fix this persistence iss
    ```
    Add to Windows startup:
    HKCU\Software\Microsoft\Windows\CurrentVersion\Run
-   "WinLauncher" = "C:\Program Files\WinLauncher\winlauncher.exe"
+   "Nexus" = "C:\Program Files\Nexus\nexus.exe"
 
    Add uninstaller entry:
-   HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\WinLauncher
-   - DisplayName: "WinLauncher"
-   - DisplayIcon: winlauncher.exe
+   HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\Nexus
+   - DisplayName: "Nexus"
+   - DisplayIcon: nexus.exe
    - UninstallString: msiexec /x {PRODUCT_GUID}
    ```
 
 3. **Shortcuts Creation:**
    ```
    Start Menu:
-   C:\ProgramData\Microsoft\Windows\Start Menu\Programs\WinLauncher\
-   - WinLauncher.lnk → winlauncher.exe
-   - Uninstall WinLauncher.lnk → msiexec uninstall
+   C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Nexus\
+   - Nexus.lnk → nexus.exe
+   - Uninstall Nexus.lnk → msiexec uninstall
 
    Desktop (optional):
-   C:\Users\{User}\Desktop\WinLauncher.lnk
+   C:\Users\{User}\Desktop\Nexus.lnk
    ```
 
 4. **First-Run Configuration:**
    ```
    After install completes:
-   - Launch winlauncher.exe automatically
+   - Launch nexus.exe automatically
    - Show first-run welcome dialog
    - Configure hotkey (default Alt+Space)
    - Enable/disable startup (checkbox)
@@ -162,33 +162,33 @@ Show me the exact code changes needed in src/main.rs to fix this persistence iss
 
 **Installer Prompt:**
 ```
-Create a complete WiX Toolset installer for WinLauncher:
+Create a complete WiX Toolset installer for Nexus:
 
 INSTALLER REQUIREMENTS:
 1. Product Information:
-   - Name: WinLauncher
+   - Name: Nexus
    - Version: 1.0.0
    - Manufacturer: Qwenzy
    - Upgrade GUID: Generate stable GUID for upgrades
 
 2. Installation Directory:
-   - Default: C:\Program Files\WinLauncher
+   - Default: C:\Program Files\Nexus
    - User can change during install
    - Create directory if doesn't exist
 
 3. Files to Install:
-   - winlauncher.exe (from target/release/)
+   - nexus.exe (from target/release/)
    - README.md → README.txt
    - Include embedded icon/resources
 
 4. Registry Entries:
    - Add to HKCU\Software\Microsoft\Windows\CurrentVersion\Run
-   - Key: "WinLauncher"
-   - Value: "[INSTALLDIR]winlauncher.exe"
+   - Key: "Nexus"
+   - Value: "[INSTALLDIR]nexus.exe"
    - Only if user checks "Run at startup" during install
 
 5. Shortcuts:
-   - Start Menu: Programs\WinLauncher\WinLauncher.lnk
+   - Start Menu: Programs\Nexus\Nexus.lnk
    - Desktop: Optional, ask during install
    - Context menu should have: Open, Run at Startup, Uninstall
 
@@ -210,22 +210,22 @@ INSTALLER REQUIREMENTS:
    - Show "What's New" if upgrading
 
 DELIVERABLES:
-1. installer/winlauncher.wxs - Main WiX source file
+1. installer/nexus.wxs - Main WiX source file
 2. installer/build.bat - Build script for creating MSI
 3. installer/banner.bmp - Installer banner (493x58)
 4. installer/dialog.bmp - Welcome dialog (493x312)
 5. Documentation on how to build the installer
 
 STRUCTURE:
-winlauncher/
+nexus/
 ├── installer/
-│   ├── winlauncher.wxs       # Main WiX config
+│   ├── nexus.wxs       # Main WiX config
 │   ├── build.bat             # Build script
 │   ├── banner.bmp            # Top banner
 │   ├── dialog.bmp            # Welcome screen
 │   └── README_INSTALLER.md   # Build instructions
 ├── src/
-├── target/release/winlauncher.exe
+├── target/release/nexus.exe
 └── Cargo.toml
 
 Show me the complete WiX configuration and build process.
@@ -237,7 +237,7 @@ Show me the complete WiX configuration and build process.
 
 **When to Show Wizard:**
 - First time app launches after installation
-- Detected by: config file doesn't exist at `%APPDATA%\WinLauncher\config.json`
+- Detected by: config file doesn't exist at `%APPDATA%\Nexus\config.json`
 - Or: `config.first_run = true`
 
 **Wizard Screens:**
@@ -245,7 +245,7 @@ Show me the complete WiX configuration and build process.
 **Screen 1: Welcome**
 ```
 ┌─────────────────────────────────────┐
-│  Welcome to WinLauncher! 🚀         │
+│  Welcome to Nexus! 🚀         │
 │                                     │
 │  Press Alt+Space anywhere in        │
 │  Windows to instantly search and    │
@@ -278,13 +278,13 @@ Show me the complete WiX configuration and build process.
 ┌─────────────────────────────────────┐
 │  Startup Settings                   │
 │                                     │
-│  ☑ Run WinLauncher on Windows       │
+│  ☑ Run Nexus on Windows       │
 │     startup (Recommended)           │
 │                                     │
 │  ☐ Show launcher window on          │
 │     startup (optional)              │
 │                                     │
-│  💡 Tip: WinLauncher runs quietly   │
+│  💡 Tip: Nexus runs quietly   │
 │     in the system tray. Press your  │
 │     hotkey anytime to launch!       │
 │                                     │
@@ -297,7 +297,7 @@ Show me the complete WiX configuration and build process.
 ┌─────────────────────────────────────┐
 │  Setup Complete! ✅                  │
 │                                     │
-│  WinLauncher is now running in      │
+│  Nexus is now running in      │
 │  your system tray.                  │
 │                                     │
 │  Quick tips:                        │
@@ -312,7 +312,7 @@ Show me the complete WiX configuration and build process.
 
 **Implementation Prompt:**
 ```
-Create a first-run wizard for WinLauncher using Slint UI:
+Create a first-run wizard for Nexus using Slint UI:
 
 REQUIREMENTS:
 1. Wizard appears ONLY on first run (check config.first_run flag)
@@ -379,7 +379,7 @@ Show me the complete implementation for:
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  WinLauncher App                                │
+│  Nexus App                                │
 │  ┌─────────────────────────────────────────┐   │
 │  │ Background Update Checker Thread        │   │
 │  │ - Runs every 24 hours                    │   │
@@ -405,7 +405,7 @@ Show me the complete implementation for:
 
 **Update Check Implementation Prompt:**
 ```
-Implement auto-update system for WinLauncher:
+Implement auto-update system for Nexus:
 
 REQUIREMENTS:
 1. Check for updates every 24 hours in background
@@ -437,8 +437,8 @@ Response JSON:
   "tag_name": "v1.0.1",
   "assets": [
     {
-      "name": "WinLauncher-Setup.msi",
-      "browser_download_url": "https://github.com/.../WinLauncher-Setup.msi"
+      "name": "Nexus-Setup.msi",
+      "browser_download_url": "https://github.com/.../Nexus-Setup.msi"
     }
   ]
 }
@@ -450,12 +450,12 @@ Parse both, compare: 1.0.1 > 0.1.0 → update available
 
 DOWNLOAD PROCESS:
 1. Use reqwest crate (add to Cargo.toml)
-2. Download .msi to %TEMP%\WinLauncher-Update.msi
+2. Download .msi to %TEMP%\Nexus-Update.msi
 3. Show progress in tray tooltip if possible
 4. Verify download completed (check file size)
 
 INSTALLATION PROCESS:
-1. Launch: msiexec /i "%TEMP%\WinLauncher-Update.msi" /qb
+1. Launch: msiexec /i "%TEMP%\Nexus-Update.msi" /qb
    - /qb = basic UI, progress bar only
 2. Current app must exit before installer runs
 3. Installer will:
@@ -487,7 +487,7 @@ Show me complete implementation of src/updater.rs with all functions.
 ```
 Test 1: Fresh Install
 [ ] Run installer on clean Windows machine
-[ ] Verify files copied to C:\Program Files\WinLauncher\
+[ ] Verify files copied to C:\Program Files\Nexus\
 [ ] Check Start Menu shortcut exists
 [ ] Check Desktop shortcut (if selected)
 [ ] Verify "Add/Remove Programs" entry
@@ -515,10 +515,10 @@ Test 3: Uninstall
 **Application Testing:**
 ```
 Test 1: Persistence
-[ ] Run winlauncher.exe
+[ ] Run nexus.exe
 [ ] Press Alt+Space → window shows
 [ ] Press Escape → window hides
-[ ] Check Task Manager: winlauncher.exe still running ✓
+[ ] Check Task Manager: nexus.exe still running ✓
 [ ] Check system tray: icon visible ✓
 [ ] Press Alt+Space again → window shows immediately ✓
 [ ] Repeat 10 times → no crashes
@@ -533,7 +533,7 @@ Test 2: Search Functionality
 
 Test 3: Startup Integration
 [ ] Restart computer
-[ ] Check Task Manager → winlauncher.exe running
+[ ] Check Task Manager → nexus.exe running
 [ ] Check system tray → icon visible
 [ ] Press Alt+Space → works immediately
 [ ] No error messages in Event Viewer
@@ -558,7 +558,7 @@ Test 4: Updates
 ```batch
 @echo off
 echo ================================================
-echo Building WinLauncher Release Binary
+echo Building Nexus Release Binary
 echo ================================================
 
 echo Cleaning previous builds...
@@ -568,9 +568,9 @@ echo Building optimized release...
 cargo build --release
 
 echo Checking binary...
-if exist target\release\winlauncher.exe (
+if exist target\release\nexus.exe (
     echo ✓ Binary created successfully
-    dir target\release\winlauncher.exe
+    dir target\release\nexus.exe
 ) else (
     echo ✗ Build failed!
     exit /b 1
@@ -584,7 +584,7 @@ echo Build complete!
 ```batch
 @echo off
 echo ================================================
-echo Building WinLauncher Installer
+echo Building Nexus Installer
 echo ================================================
 
 echo Checking WiX Toolset...
@@ -597,18 +597,18 @@ if %errorlevel% neq 0 (
 
 echo Compiling WiX source...
 cd installer
-candle winlauncher.wxs -dSourceDir=..\target\release
+candle nexus.wxs -dSourceDir=..\target\release
 
 echo Linking installer...
-light winlauncher.wixobj -out ..\WinLauncher-Setup.msi
+light nexus.wixobj -out ..\Nexus-Setup.msi
 
 echo Cleaning up...
-del winlauncher.wixobj
+del nexus.wixobj
 
 cd ..
 echo.
-echo ✓ Installer created: WinLauncher-Setup.msi
-dir WinLauncher-Setup.msi
+echo ✓ Installer created: Nexus-Setup.msi
+dir Nexus-Setup.msi
 ```
 
 **Step 3: Create GitHub Release**
@@ -631,14 +631,14 @@ echo Version: v!VERSION!
 :: Create release notes
 echo Creating RELEASE_NOTES.md...
 (
-echo # WinLauncher v!VERSION!
+echo # Nexus v!VERSION!
 echo.
 echo ## Changes
 echo - Bug fixes and improvements
 echo - See CHANGELOG.md for details
 echo.
 echo ## Installation
-echo 1. Download WinLauncher-Setup.msi
+echo 1. Download Nexus-Setup.msi
 echo 2. Run the installer
 echo 3. Press Alt+Space to launch!
 ) > RELEASE_NOTES.md
@@ -649,7 +649,7 @@ echo 1. Create tag: git tag v!VERSION!
 echo 2. Push tag: git push origin v!VERSION!
 echo 3. Go to: https://github.com/Drakaniia/nexus/releases/new
 echo 4. Select tag: v!VERSION!
-echo 5. Upload: WinLauncher-Setup.msi
+echo 5. Upload: Nexus-Setup.msi
 echo 6. Copy contents of RELEASE_NOTES.md
 echo 7. Publish release
 ```
@@ -665,13 +665,13 @@ Add new sections:
 ## Installation
 
 ### Option 1: Installer (Recommended)
-1. Download `WinLauncher-Setup.msi` from [Releases](https://github.com/Drakaniia/nexus/releases/latest)
+1. Download `Nexus-Setup.msi` from [Releases](https://github.com/Drakaniia/nexus/releases/latest)
 2. Run the installer
 3. Follow the setup wizard
 4. Press Alt+Space to launch!
 
 ### Option 2: Portable (Advanced Users)
-1. Download `winlauncher.exe` from [Releases](https://github.com/Drakaniia/nexus/releases/latest)
+1. Download `nexus.exe` from [Releases](https://github.com/Drakaniia/nexus/releases/latest)
 2. Run the executable
 3. Configure manually
 
@@ -684,7 +684,7 @@ After installation, the setup wizard will guide you through:
 
 ## Updating
 
-WinLauncher checks for updates automatically every 24 hours.
+Nexus checks for updates automatically every 24 hours.
 You can also manually check:
 1. Right-click system tray icon
 2. Click "Check for Updates"
@@ -694,15 +694,15 @@ You can also manually check:
 
 ### Windows 10/11:
 1. Open Settings → Apps → Installed apps
-2. Find "WinLauncher"
+2. Find "Nexus"
 3. Click [...] → Uninstall
 
 ### Classic:
 1. Control Panel → Programs and Features
-2. Select "WinLauncher"
+2. Select "Nexus"
 3. Click Uninstall
 
-Your settings in %APPDATA%\WinLauncher will be preserved.
+Your settings in %APPDATA%\Nexus will be preserved.
 ```
 
 ---

@@ -1,6 +1,6 @@
 # Project Commands
 
-This document contains all the commands you can use to work with the WinLauncher project.
+This document contains all the commands you can use to work with the Nexus project.
 
 ## Development Commands
 
@@ -13,7 +13,7 @@ This document contains all the commands you can use to work with the WinLauncher
 ### Run Commands
 - `cargo run` - Run the project in debug mode
 - `cargo run --release` - Run the project in release mode
-- `cargo run --bin winlauncher` - Run the specific binary
+- `cargo run --bin nexus` - Run the specific binary
 
 ### Test Commands
 - `cargo test` - Run all tests
@@ -71,7 +71,7 @@ This document contains all the commands you can use to work with the WinLauncher
 2. Update `CHANGELOG.md`
 3. Run full test suite: `cargo test --release`
 4. Build release binary: `cargo build --release`
-5. Test release build: `./target/release/winlauncher`
+5. Test release build: `./target/release/nexus`
 6. Commit and tag: `git tag v<x.y.z>`
 7. Push with tags: `git push origin main --tags`
 8. Create GitHub release with built binary

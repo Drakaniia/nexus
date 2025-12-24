@@ -1,4 +1,4 @@
-# WinLauncher - Windows Application Launcher
+# Nexus - Windows Application Launcher
 
 A lightweight, modern Windows launcher with advanced configuration and auto-update capabilities.
 
@@ -13,7 +13,7 @@ A lightweight, modern Windows launcher with advanced configuration and auto-upda
 ## Installation
 
 ### Option 1: MSI Installer (Recommended)
-1. Download `WinLauncher-Setup.msi` from [Releases](https://github.com/Qwenzy/nexus/releases)
+1. Download `Nexus-Setup.msi` from [Releases](https://github.com/Qwenzy/nexus/releases)
 2. Double-click to install
 3. Launch from Start Menu or Desktop shortcut
 
@@ -36,7 +36,7 @@ cd installer
 
 ## Configuration
 
-Settings are stored in: `%APPDATA%\Win Launcher\config.json`
+Settings are stored in: `%APPDATA%\Nexus\config.json`
 
 ### Available Settings
 

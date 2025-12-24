@@ -597,52 +597,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    // === HANDLE WINDOW FOCUS LOSS - AUTO HIDE ===
-    // Monitor if the window loses focus and auto-hide it
-    let launcher_weak_focus = launcher_weak.clone();
-    let app_running_focus = Arc::clone(&app_running);
-
-    std::thread::spawn(move || {
-        loop {
-            if !app_running_focus.load(Ordering::Relaxed) {
-                break;
-            }
-
-            // Check every 100ms if window lost focus
-            std::thread::sleep(std::time::Duration::from_millis(100));
-
-            // Check if our window is the foreground window
-            // Get the foreground window HWND as isize (can be sent between threads)
-            let foreground_hwnd_raw = unsafe {
-                use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
-                let foreground = GetForegroundWindow();
-                foreground.0 as isize
-            };
-
-            // Get our window's HWND and check if we have focus
-            let last_shown = *last_shown_time.lock().unwrap();
-            let _ = launcher_weak_focus.upgrade_in_event_loop(move |launcher: Launcher| {
-                if launcher.get_is_visible() {
-                    // Skip focus check for 500ms after window was shown to avoid race condition
-                    if last_shown.elapsed() < std::time::Duration::from_millis(500) {
-                        return;
-                    }
-
-                    // Get our window handle
-                    if let Some(our_hwnd) = platform_window::get_window_hwnd(launcher.window()) {
-                        let our_hwnd_raw = our_hwnd.0 as isize;
-
-                        // If foreground window is not ours, hide the launcher
-                        if foreground_hwnd_raw != our_hwnd_raw {
-                            log::debug!("Focus lost (foreground window changed) - hiding launcher");
-                            launcher.hide().ok();
-                            launcher.set_is_visible(false);
-                        }
-                    }
-                }
-            });
-        }
-    });
+    // === DISABLED: WINDOW FOCUS LOSS MONITORING ===
+    // The focus monitoring was causing issues with WS_EX_NOACTIVATE windows
+    // which never receive focus. Instead, we rely on explicit user actions
+    // (Escape key, item selection) to hide the window.
 
     // Handle search input changes - UPDATE UI IMMEDIATELY (Fix for Issue #1)
     {

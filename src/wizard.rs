@@ -1,23 +1,18 @@
 //! First-Run Setup Wizard Module
 //! Displays a multi-screen configuration wizard on first application launch
-//! 
-//! NOTE: Wizard UI temporarily disabled due to Slint module compilation issues
-//! The wizard.slint file exists but needs proper integration strategy
 
 use crate::config::AppConfig;
 use std::error::Error;
 
 /// Show the setup wizard and collect user configuration
-/// 
-/// TEMPORARY: Wizard UI is disabled, returns Ok immediately and applies defaults
 pub fn show_wizard(config: &mut AppConfig) -> Result<(), Box<dyn Error>> {
-    log::info!("Wizard functionality temporarily disabled - applying defaults");
+    log::info!("Wizard UI temporarily disabled due to compilation issues");
     log::info!("First run setup will use default configuration:");
     log::info!("  Hotkey: Alt + Space");
     log::info!("  Run on startup: {}", config.startup.enabled);
-    
+
     // For now, just return Ok to allow the application to continue
-    // TODO: Implement proper wizard once Slint multi-file compilation is resolved
+    // TODO: Implement proper wizard once we resolve the modal dialog approach
     Ok(())
 }
 

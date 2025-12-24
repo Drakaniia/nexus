@@ -1,6 +1,6 @@
-# WinLauncher Installer Build Guide
+# Nexus Installer Build Guide
 
-This directory contains the WiX Toolset installer configuration for creating a professional Windows MSI installer for WinLauncher.
+This directory contains the WiX Toolset installer configuration for creating a professional Windows MSI installer for Nexus.
 
 ## Prerequisites
 
@@ -59,7 +59,7 @@ This will:
 2. Build the Rust application in release mode
 3. Compile the WiX source file
 4. Link the MSI package
-5. Create `WinLauncher-Setup.msi` in the project root
+5. Create `Nexus-Setup.msi` in the project root
 
 ### Manual Build (Advanced)
 
@@ -73,25 +73,25 @@ cargo build --release
 cd installer
 
 # 3. Compile WiX source
-candle winlauncher.wxs -ext WixUIExtension
+candle nexus.wxs -ext WixUIExtension
 
 # 4. Link MSI package
-light winlauncher.wixobj -ext WixUIExtension -out ..\WinLauncher-Setup.msi
+light nexus.wixobj -ext WixUIExtension -out ..\Nexus-Setup.msi
 
 # 5. Clean up intermediate files
-del winlauncher.wixobj
-del winlauncher.wixpdb
+del nexus.wixobj
+del nexus.wixpdb
 ```
 
 ## Installer Configuration
 
 ### Product Information
 
-Edit `winlauncher.wxs` to customize:
+Edit `nexus.wxs` to customize:
 
 ```xml
 <?define ProductVersion = "1.0.0" ?>
-<?define ProductName = "WinLauncher" ?>
+<?define ProductName = "Nexus" ?>
 <?define Manufacturer = "Qwenzy" ?>
 ```
 
@@ -106,12 +106,12 @@ UpgradeCode="A1B2C3D4-E5F6-4789-A0B1-C2D3E4F5G6H7"
 The installer includes the following component groups:
 
 1. **ProductComponents**
-   - Main executable (`winlauncher.exe`)
+   - Main executable (`nexus.exe`)
    - Default configuration template
    - README and LICENSE files
 
 2. **ShortcutComponents**
-   - Start Menu shortcuts (WinLauncher, Uninstall)
+   - Start Menu shortcuts (Nexus, Uninstall)
    - Optional Desktop shortcut
 
 3. **RegistryComponents**
@@ -121,20 +121,20 @@ The installer includes the following component groups:
 ### File Locations
 
 **During Installation:**
-- Default install path: `C:\Program Files\WinLauncher\`
+- Default install path: `C:\Program Files\Nexus\`
 - User can customize during installation
 
 **After Installation:**
-- Application config: `%APPDATA%\WinLauncher\config.json`
-- Application data: `%APPDATA%\WinLauncher\`
-- Registry settings: `HKCU\Software\Qwenzy\WinLauncher\`
+- Application config: `%APPDATA%\Nexus\config.json`
+- Application data: `%APPDATA%\Nexus\`
+- Registry settings: `HKCU\Software\Qwenzy\Nexus\`
 
 ## Testing the Installer
 
 ### Fresh Installation Test
 
 1. Build the installer: `cd installer && build.bat`
-2. Locate `WinLauncher-Setup.msi` in project root
+2. Locate `Nexus-Setup.msi` in project root
 3. Double-click to run installer
 4. Follow wizard:
    - Accept license
@@ -153,7 +153,7 @@ The installer includes the following component groups:
 ### Upgrade Test
 
 1. Install version 1.0.0
-2. Update version in `winlauncher.wxs`:
+2. Update version in `nexus.wxs`:
    ```xml
    <?define ProductVersion = "1.0.1" ?>
    ```
@@ -164,7 +164,7 @@ The installer includes the following component groups:
 ### Uninstallation Test
 
 1. Open Settings → Apps → Installed apps
-2. Find "WinLauncher"
+2. Find "Nexus"
 3. Click Uninstall
 4. Verify:
    - Program Files directory removed
@@ -178,16 +178,16 @@ For automated/enterprise deployment:
 
 ```cmd
 REM Silent installation with default settings
-msiexec /i WinLauncher-Setup.msi /quiet /qn
+msiexec /i Nexus-Setup.msi /quiet /qn
 
 REM Silent installation with custom directory
-msiexec /i WinLauncher-Setup.msi /quiet /qn INSTALLFOLDER="C:\CustomPath\WinLauncher"
+msiexec /i Nexus-Setup.msi /quiet /qn INSTALLFOLDER="C:\CustomPath\Nexus"
 
 REM Silent installation without startup registration
-msiexec /i WinLauncher-Setup.msi /quiet /qn RUNONSTARTUP=0
+msiexec /i Nexus-Setup.msi /quiet /qn RUNONSTARTUP=0
 
 REM Silent uninstallation
-msiexec /x WinLauncher-Setup.msi /quiet /qn
+msiexec /x Nexus-Setup.msi /quiet /qn
 ```
 
 ### Silent Installation Parameters
@@ -210,7 +210,7 @@ For distribution, sign the MSI to avoid Windows SmartScreen warnings:
 ### Signing Command
 
 ```cmd
-signtool sign /f YourCertificate.pfx /p YourPassword /t http://timestamp.digicert.com /d "WinLauncher" /du "https://github.com/Drakaniia/nexus" WinLauncher-Setup.msi
+signtool sign /f YourCertificate.pfx /p YourPassword /t http://timestamp.digicert.com /d "Nexus" /du "https://github.com/Drakaniia/nexus" Nexus-Setup.msi
 ```
 
 **Parameters:**
@@ -237,14 +237,14 @@ signtool sign /f YourCertificate.pfx /p YourPassword /t http://timestamp.digicer
 ### "File not found: icon.ico"
 
 - Create or copy an icon file to `installer/assets/icon.ico`
-- Or remove icon references from `winlauncher.wxs`
+- Or remove icon references from `nexus.wxs`
 
 ### "ICE Validation Errors"
 
 Internal Consistency Evaluators (ICE) warnings can usually be ignored for simple installers. To suppress:
 
 ```cmd
-light -sice:ICE61 winlauncher.wixobj -out WinLauncher-Setup.msi
+light -sice:ICE61 nexus.wixobj -out Nexus-Setup.msi
 ```
 
 ### Installer Won't Uninstall Old Version
@@ -257,7 +257,7 @@ light -sice:ICE61 winlauncher.wixobj -out WinLauncher-Setup.msi
 
 ### Add Custom Dialog
 
-Edit `winlauncher.wxs` UI section:
+Edit `nexus.wxs` UI section:
 
 ```xml
 <UI>
@@ -291,7 +291,7 @@ Use conditions on components:
 
 Before releasing the installer:
 
-- [ ] Update version in `winlauncher.wxs`
+- [ ] Update version in `nexus.wxs`
 - [ ] Test fresh installation
 - [ ] Test upgrade from previous version
 - [ ] Test uninstallation

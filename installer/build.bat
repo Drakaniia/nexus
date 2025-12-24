@@ -1,14 +1,14 @@
 @echo off
 REM ============================================================================
-REM WinLauncher MSI Installer Build Script
+REM Nexus MSI Installer Build Script
 REM ============================================================================
-REM This script builds the WinLauncher MSI installer using WiX Toolset
+REM This script builds the Nexus MSI installer using WiX Toolset
 REM Prerequisites: WiX Toolset v3.x installed and in PATH
 REM ============================================================================
 
 echo.
 echo ============================================================================
-echo Building WinLauncher MSI Installer
+echo Building Nexus MSI Installer
 echo ============================================================================
 echo.
 
@@ -46,11 +46,11 @@ echo    Found Cargo
 echo.
 
 REM Build the Rust application in release mode
-echo [3/6] Building WinLauncher release binary...
+echo [3/6] Building Nexus release binary...
 cd ..
 
 REM Kill running instances to avoid "Access is denied" errors
-taskkill /f /im winlauncher.exe >nul 2>&1
+taskkill /f /im nexus.exe >nul 2>&1
 timeout /t 2 /nobreak >nul
 echo    Ensured no running instances...
 
@@ -66,9 +66,9 @@ echo    Build successful
 echo.
 
 REM Verify executable exists
-if not exist "target\release\winlauncher.exe" (
+if not exist "target\release\nexus.exe" (
     echo.
-    echo ERROR: winlauncher.exe not found in target\release\
+    echo ERROR: nexus.exe not found in target\release\
     echo.
     pause
     exit /b 1
@@ -78,12 +78,12 @@ REM Return to installer directory
 cd installer
 
 REM Compile WiX source file
-echo [4/6] Compiling WiX source ^(winlauncher.wxs^)...
-candle winlauncher.wxs -ext WixUIExtension
+echo [4/6] Compiling WiX source ^(nexus.wxs^)...
+candle nexus.wxs -ext WixUIExtension
 if %errorlevel% neq 0 (
     echo.
     echo ERROR: WiX compilation failed!
-    echo Check winlauncher.wxs for syntax errors
+    echo Check nexus.wxs for syntax errors
     echo.
     pause
     exit /b 1
@@ -93,7 +93,7 @@ echo.
 
 REM Link the MSI package
 echo [5/6] Linking MSI package...
-light winlauncher.wixobj -ext WixUIExtension -out ..\WinLauncher-Setup.msi
+light nexus.wixobj -ext WixUIExtension -out ..\Nexus-Setup.msi
 if %errorlevel% neq 0 (
     echo.
     echo ERROR: MSI linking failed!
@@ -106,8 +106,8 @@ echo.
 
 REM Clean up intermediate files
 echo [6/6] Cleaning up...
-del winlauncher.wixobj 2>nul
-del winlauncher.wixpdb 2>nul
+del nexus.wixobj 2>nul
+del nexus.wixpdb 2>nul
 echo    Cleanup complete
 echo.
 
@@ -116,22 +116,22 @@ echo ===========================================================================
 echo SUCCESS!
 echo ============================================================================
 echo.
-echo MSI installer created: WinLauncher-Setup.msi
+echo MSI installer created: Nexus-Setup.msi
 echo Location: %CD%\..\
 echo.
 
 cd ..
-dir WinLauncher-Setup.msi
+dir Nexus-Setup.msi
 
 echo.
 echo To test the installer:
-echo 1. Double-click WinLauncher-Setup.msi
+echo 1. Double-click Nexus-Setup.msi
 echo 2. Follow the installation wizard
-echo 3. Launch WinLauncher from Start Menu or Desktop
+echo 3. Launch Nexus from Start Menu or Desktop
 echo.
 echo To create a release:
 echo 1. Tag version: git tag v1.0.0
 echo 2. Push tag: git push origin v1.0.0
-echo 3. Upload WinLauncher-Setup.msi to GitHub Releases
+echo 3. Upload Nexus-Setup.msi to GitHub Releases
 echo.
 pause

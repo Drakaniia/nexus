@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================================
-REM WinLauncher Asset Preparation Script
+REM Nexus Asset Preparation Script
 REM ============================================================================
 REM This script prepares installer assets. It NOTE: requires ImageMagick for
 REM PNG to ICO conversion. If ImageMagick is not installed, you'll need to

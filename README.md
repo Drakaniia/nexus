@@ -84,6 +84,16 @@ The application uses a custom logo located in `docs/logoNexus.png`. The build pr
 - Copies the logo to `installerassets/icon.png` for the application UI
 - Converts it to `installerassets/icon.ico` for the installer and system tray
 
+### Development Setup
+```bash
+# One-time setup (Windows)
+.\scripts\setup_dev.bat
+
+# One-time setup (Linux/Mac)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+# Install WiX Toolset manually on Windows for installer builds
+```
+
 ### Build Commands
 ```bash
 # Check code
@@ -95,9 +105,21 @@ cargo run
 # Build release
 cargo build --release
 
-# Build installer
+# Run tests
+cargo test
+
+# Build installer (Windows only)
 cd installer && build.bat
+
+# Full release build with GitHub release
+.\scripts\build_release.bat
 ```
+
+### Build Artifacts
+After building, you'll have:
+- `target/release/nexus.exe` - Main application binary
+- `Nexus-Setup.msi` - Professional Windows installer
+- `RELEASE_NOTES.md` - Generated release notes
 
 ### Project Structure
 ```

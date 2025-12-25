@@ -1,0 +1,156 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: x86_64-pc-windows-msvc
+
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+
+    - name: Setup WiX Toolset
+      run: |
+        # Download and install WiX Toolset v3.14
+        Invoke-WebRequest -Uri "https://github.com/wixtoolset/wix3/releases/download/wix314rtm/wix314.exe" -OutFile "wix.exe"
+        Start-Process -FilePath "wix.exe" -ArgumentList "/quiet", "/norestart" -Wait
+        # Add WiX to PATH
+        $wixPath = "${env:ProgramFiles(x86)}\WiX Toolset v3.14\bin"
+        echo "$wixPath" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+    - name: Build release binary
+      run: cargo build --release
+
+    - name: Run tests
+      run: cargo test --release
+
+    - name: Build MSI installer
+      run: |
+        cd installer
+        .\build.bat
+
+    - name: Verify build artifacts
+      run: |
+        if (!(Test-Path "target\release\nexus.exe")) { throw "nexus.exe not found" }
+        if (!(Test-Path "Nexus-Setup.msi")) { throw "Nexus-Setup.msi not found" }
+
+    - name: Create release notes
+      run: |
+        $version = (Get-Content Cargo.toml | Select-String 'version = "(.+)"').Matches.Groups[1].Value
+        $releaseNotes = @"
+# Nexus v$version
+
+## What's New
+
+### ✨ Features
+- First-run setup wizard for easy configuration
+- Professional MSI installer with automatic updates
+- Persistent background service with system tray integration
+- Lightning-fast fuzzy search with calculator and web integration
+- Comprehensive settings and customization options
+
+### 🔧 Improvements
+- Enhanced hotkey handling and conflict detection
+- Improved app discovery and search performance
+- Better error handling and logging
+- Optimized memory usage and startup time
+
+### 🐛 Bug Fixes
+- Fixed application persistence issues
+- Resolved window focus and positioning problems
+- Fixed startup registration and integration
+
+## Installation
+
+### Option 1: Installer (Recommended)
+1. Download `Nexus-Setup.msi`
+2. Run the installer
+3. Follow the setup wizard
+4. Press Alt+Space to launch Nexus
+
+### Option 2: Portable
+1. Download `nexus.exe`
+2. Run the executable
+3. Configure manually if needed
+
+## System Requirements
+- Windows 10/11 (64-bit)
+- 100MB free disk space
+- Administrator rights for installation
+
+## Updating
+Nexus includes automatic update checking. You can also manually check:
+1. Right-click the system tray icon
+2. Click "Check for Updates"
+
+## First Run
+On first launch, the setup wizard will help you:
+- Choose your hotkey (default: Alt+Space)
+- Configure startup options
+- Set up your preferences
+
+## Support
+- Issues: https://github.com/Qwenzy/nexus/issues
+- Documentation: https://github.com/Qwenzy/nexus#readme
+
+## Technical Details
+- Built with Rust for performance and reliability
+- Uses Slint for modern UI with GPU acceleration
+- MSI installer ensures proper Windows integration
+- Background service architecture for instant access
+"@
+
+        $releaseNotes | Out-File -FilePath RELEASE_NOTES.md -Encoding UTF8
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: nexus-build-artifacts
+        path: |
+          target/release/nexus.exe
+          Nexus-Setup.msi
+          RELEASE_NOTES.md
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: nexus-build-artifacts
+
+    - name: Get version from tag
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
+
+    - name: Create GitHub release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ env.RELEASE_VERSION }}
+        name: Nexus v${{ env.RELEASE_VERSION }}
+        body_path: RELEASE_NOTES.md
+        files: |
+          Nexus-Setup.msi
+          nexus.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

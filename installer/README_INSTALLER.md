@@ -43,6 +43,8 @@ The installer expects the following assets in the `installer/assets/` directory:
 
 **Note:** If assets are missing, the build will use defaults or skip optional images.
 
+The installer automatically uses `logoNexus.png` from the `docs/` directory as the application logo.
+
 ## Building the Installer
 
 ### Quick Build

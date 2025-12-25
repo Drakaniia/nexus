@@ -850,14 +850,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Update UI IMMEDIATELY (not in polling thread)
             let slint_results: Vec<SearchResult> = search_results.iter().map(|r: &SearchResultData| r.into()).collect();
-            log::debug!("Converted {} results to Slint format", slint_results.len());
+            let results_len = slint_results.len();
+            log::debug!("Converted {} results to Slint format", results_len);
 
             let _ = launcher_weak_search.upgrade_in_event_loop(move |launcher: Launcher| {
                 // Always create a fresh model to ensure UI updates properly
                 let model: slint::ModelRc<SearchResult> = std::rc::Rc::new(VecModel::from(slint_results)).into();
                 launcher.set_results(model);
                 launcher.set_selected_index(0);
-                log::debug!("UI updated with {} search results (fresh model)", slint_results.len());
+                log::debug!("UI updated with {} search results (fresh model)", results_len);
             });
         });
     }

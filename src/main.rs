@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
-use slint::{Model, SharedString, VecModel, LogicalPosition, CloseRequestResponse};
+use slint::{Model, SharedString, VecModel, LogicalPosition, CloseRequestResponse, ComponentHandle};
 
 // Windows API imports for monitor positioning
 use windows::Win32::Foundation::POINT;
@@ -17,8 +17,11 @@ use windows::Win32::Graphics::Gdi::{
     MonitorFromPoint, GetMonitorInfoW, MONITORINFO, MONITOR_DEFAULTTONEAREST,
 };
 
-slint::include_modules!();
 
+mod ui;
+
+// Re-export generated UI types
+pub use ui::{Launcher, SearchResult};
 mod actions;
 mod app_discovery;
 mod config;
@@ -34,7 +37,7 @@ mod updater;
 use updater::UpdateInfo;
 
 use config::AppConfig;
-use single_instance::SingleInstance;
+use single_instance::{SingleInstance, PortableMode, detect_portable_mode};
 use tray::{TrayEvent, TrayManager, check_tray_event};
 
 /// Parse modifier string to Modifiers enum
@@ -407,8 +410,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     log::info!("Starting Nexus...");
 
+    // === DETECT PORTABLE MODE ===
+    let portable_mode = detect_portable_mode();
+    log::info!("Application mode: {:?}", portable_mode);
+
     // === SINGLE INSTANCE CHECK (must be first!) ===
-    let _instance_lock = match SingleInstance::acquire() {
+    let _instance_lock = match SingleInstance::acquire_with_mode(portable_mode) {
         Ok(lock) => {
             log::info!("Single instance lock acquired");
             lock
@@ -420,19 +427,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // === LOAD CONFIGURATION ===
-    let mut config = AppConfig::load();
+    let mut config = AppConfig::load_with_mode(portable_mode);
     
     // First run setup - show wizard if first run
     if config.is_first_run() {
         log::info!("First run detected, showing setup wizard");
-        
+
+        // For portable mode, disable startup by default since portable apps shouldn't modify system settings
+        if matches!(portable_mode, PortableMode::Portable) {
+            config.startup.enabled = false;
+            log::info!("Portable mode detected - startup registration disabled");
+        }
+
         // Show the wizard and let user configure the application
         match wizard::show_wizard(&mut config) {
             Ok(_) => {
                 log::info!("Wizard completed successfully");
-                
-                // Apply startup registration based on wizard settings
-                if config.startup.enabled {
+
+                // Apply startup registration based on wizard settings (skip for portable mode)
+                if matches!(portable_mode, PortableMode::Portable) {
+                    log::info!("Skipping startup registration for portable mode");
+                } else if config.startup.enabled {
                     if let Err(e) = startup::enable_startup() {
                         log::warn!("Failed to enable startup: {}", e);
                     }
@@ -443,29 +458,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
-                // Verify startup registration integrity
-                if let Err(e) = startup::verify_startup_registration() {
-                    log::warn!("Failed to verify startup registration: {}", e);
+                // Verify startup registration integrity (skip for portable mode)
+                if !matches!(portable_mode, PortableMode::Portable) {
+                    if let Err(e) = startup::verify_startup_registration() {
+                        log::warn!("Failed to verify startup registration: {}", e);
+                    }
                 }
-                
+
                 // Mark first run as complete
                 config.complete_first_run();
-                config.save();
+                config.save_with_mode(portable_mode);
             }
             Err(e) => {
                 log::warn!("Wizard error or cancelled: {}", e);
                 log::info!("Continuing with default configuration");
-                
-                // Still register startup if enabled in default config
-                if config.startup.enabled {
+
+                // Still register startup if enabled in default config (skip for portable mode)
+                if matches!(portable_mode, PortableMode::Portable) {
+                    log::info!("Skipping startup registration for portable mode");
+                } else if config.startup.enabled {
                     if let Err(e) = startup::enable_startup() {
                         log::warn!("Failed to enable startup: {}", e);
                     }
                 }
-                
+
                 // Mark as completed even if wizard failed/cancelled
                 config.complete_first_run();
-                config.save();
+                config.save_with_mode(portable_mode);
             }
         }
     }
@@ -489,7 +508,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Move window off-screen and hide it, but return KeepWindowShown so Slint doesn't exit
         if let Some(launcher) = launcher_weak_for_close.upgrade() {
-            let window = launcher.window();
+            let window: &slint::Window = launcher.window();
             window.set_position(slint::LogicalPosition::new(-10000.0, -10000.0));
             launcher.hide().ok();
             launcher.set_is_visible(false);
@@ -768,7 +787,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 log::debug!("Searching among {} discovered apps", state.apps.len());
 
                 // If no apps are discovered yet, add a placeholder result
-                let results = if state.apps.is_empty() && !query_str.is_empty() {
+                if state.apps.is_empty() && !query_str.is_empty() {
                     log::debug!("No apps discovered yet, showing calculator/web search only");
 
                     let mut results = Vec::new();
@@ -816,7 +835,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         log::debug!("  ... and {} more results", results.len() - 3);
                     }
                     results
-                };
+                }
             } else {
                 log::error!("Failed to lock state for search!");
                 Vec::new()
@@ -830,7 +849,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // Update UI IMMEDIATELY (not in polling thread)
-            let slint_results: Vec<SearchResult> = search_results.iter().map(|r| r.into()).collect();
+            let slint_results: Vec<SearchResult> = search_results.iter().map(|r: &SearchResultData| r.into()).collect();
             log::debug!("Converted {} results to Slint format", slint_results.len());
 
             let _ = launcher_weak_search.upgrade_in_event_loop(move |launcher: Launcher| {

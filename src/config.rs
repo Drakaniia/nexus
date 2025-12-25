@@ -1,38 +1,47 @@
 //! Configuration Management Module
-//! Handles loading/saving application settings to %APPDATA%\Nexus\config.json
+//! Handles loading/saving application settings to %APPDATA%\Nexus\config.json (installed)
+//! or to executable directory (portable mode)
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::env;
 use std::fs;
 use std::path::PathBuf;
+
+// Import portable mode detection
+use crate::single_instance::PortableMode;
 
 /// Main application configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     /// Hotkey configuration
     pub hotkey: HotkeyConfig,
-    
+
     /// Startup settings
     pub startup: StartupConfig,
-    
+
     /// Appearance settings
     pub appearance: AppearanceConfig,
-    
+
     /// Search settings
     #[serde(default)]
     pub search: SearchConfig,
-    
+
     /// Update settings
     #[serde(default)]
     pub update: UpdateConfig,
-    
+
     /// Most Recently Used tracking
     #[serde(default)]
     pub mru: HashMap<String, u32>,
-    
+
     /// First run flag
     #[serde(default = "default_first_run")]
     pub first_run: bool,
+
+    /// Portable mode flag (auto-detected, stored for reference)
+    #[serde(default)]
+    pub portable_mode: bool,
 }
 
 fn default_first_run() -> bool {
@@ -137,6 +146,7 @@ impl Default for AppConfig {
             update: UpdateConfig::default(),
             mru: HashMap::new(),
             first_run: true,
+            portable_mode: false, // Will be set during load
         }
     }
 }
@@ -222,25 +232,42 @@ impl Default for UpdateConfig {
 }
 
 impl AppConfig {
-    /// Get the configuration directory path
-    pub fn config_dir() -> Option<PathBuf> {
-        dirs::config_dir().map(|p| p.join("Nexus"))
+    /// Get the configuration directory path based on portable mode
+    pub fn config_dir(portable_mode: PortableMode) -> Option<PathBuf> {
+        match portable_mode {
+            PortableMode::Portable => {
+                // Use executable directory for portable mode
+                env::current_exe().ok()
+                    .and_then(|exe| exe.parent().map(|p| p.to_path_buf()))
+            }
+            PortableMode::Installed => {
+                // Use %APPDATA% for installed mode
+                dirs::config_dir().map(|p| p.join("Nexus"))
+            }
+        }
     }
 
-    /// Get the configuration file path
-    pub fn config_path() -> Option<PathBuf> {
-        Self::config_dir().map(|p| p.join("config.json"))
+    /// Get the configuration file path based on portable mode
+    pub fn config_path(portable_mode: PortableMode) -> Option<PathBuf> {
+        Self::config_dir(portable_mode).map(|p| p.join("config.json"))
     }
 
     /// Load configuration from file, or create default if not exists
     pub fn load() -> Self {
-        if let Some(path) = Self::config_path() {
+        Self::load_with_mode(crate::single_instance::detect_portable_mode())
+    }
+
+    /// Load configuration with specific portable mode
+    pub fn load_with_mode(portable_mode: PortableMode) -> Self {
+        if let Some(path) = Self::config_path(portable_mode) {
             if path.exists() {
                 match fs::read_to_string(&path) {
                     Ok(content) => {
                         match serde_json::from_str(&content) {
-                            Ok(config) => {
-                                log::info!("Loaded configuration from {:?}", path);
+                            Ok(mut config) => {
+                                // Update portable mode flag in loaded config
+                                config.portable_mode = matches!(portable_mode, PortableMode::Portable);
+                                log::info!("Loaded configuration from {:?} (mode: {:?})", path, portable_mode);
                                 return config;
                             }
                             Err(e) => {
@@ -253,31 +280,38 @@ impl AppConfig {
                     }
                 }
             } else {
-                log::info!("No config file found, creating default");
+                log::info!("No config file found, creating default (mode: {:?})", portable_mode);
             }
         }
 
-        let config = Self::default();
-        config.save(); // Save default config
+        let mut config = Self::default();
+        config.portable_mode = matches!(portable_mode, PortableMode::Portable);
+        config.save_with_mode(portable_mode); // Save default config
         config
     }
 
     /// Save configuration to file
     pub fn save(&self) {
-        if let Some(dir) = Self::config_dir() {
+        let portable_mode = if self.portable_mode { PortableMode::Portable } else { PortableMode::Installed };
+        self.save_with_mode(portable_mode);
+    }
+
+    /// Save configuration to file with specific portable mode
+    pub fn save_with_mode(&self, portable_mode: PortableMode) {
+        if let Some(dir) = Self::config_dir(portable_mode) {
             // Create directory if it doesn't exist
             if let Err(e) = fs::create_dir_all(&dir) {
                 log::error!("Failed to create config directory: {}", e);
                 return;
             }
 
-            if let Some(path) = Self::config_path() {
+            if let Some(path) = Self::config_path(portable_mode) {
                 match serde_json::to_string_pretty(self) {
                     Ok(content) => {
                         if let Err(e) = fs::write(&path, content) {
                             log::error!("Failed to write config file: {}", e);
                         } else {
-                            log::debug!("Configuration saved to {:?}", path);
+                            log::debug!("Configuration saved to {:?} (mode: {:?})", path, portable_mode);
                         }
                     }
                     Err(e) => {

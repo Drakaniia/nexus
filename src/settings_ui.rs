@@ -80,7 +80,7 @@ impl SettingsManager {
                 log::info!("Settings reset to defaults");
                 let default_config = AppConfig::default();
                 
-                settings.set_theme(default_config.appearance.theme.clone().into());
+                settings.set_theme(slint::SharedString::from(default_config.appearance.theme.clone()));
                 settings.set_window_opacity(default_config.appearance.opacity as f32);
                 settings.set_max_results(default_config.appearance.max_results as f32);
                 settings.set_font_size(default_config.appearance.font_size as f32);
@@ -107,7 +107,7 @@ impl SettingsManager {
         let settings_weak = settings.as_weak();
         settings.on_check_updates(move || {
             if let Some(settings) = settings_weak.upgrade() {
-                settings.set_update_status("Checking for updates...".into());
+                settings.set_update_status(slint::SharedString::from("Checking for updates..."));
                 
                 let settings_weak_cb = settings_weak.clone();
                 let _ = std::thread::spawn(move || {
@@ -125,13 +125,13 @@ impl SettingsManager {
                         if let Some(settings) = settings_weak_cb.upgrade() {
                             match response {
                                 Ok(Some(info)) => {
-                                    settings.set_update_status(format!("New version {} available!", info.version).into());
+                                    settings.set_update_status(slint::SharedString::from(format!("New version {} available!", info.version)));
                                 }
                                 Ok(None) => {
-                                    settings.set_update_status("Your software is up to date".into());
+                                    settings.set_update_status(slint::SharedString::from("Your software is up to date"));
                                 }
                                 Err(e) => {
-                                    settings.set_update_status(format!("Update failed: {}", e).into());
+                                    settings.set_update_status(slint::SharedString::from(format!("Update failed: {}", e)));
                                 }
                             }
                         }

@@ -357,6 +357,12 @@ fn get_window_center_position() -> LogicalPosition {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Set up panic handler to log panics instead of crashing silently
+    std::panic::set_hook(Box::new(|panic_info| {
+        log::error!("Application panic: {:?}", panic_info);
+        // Don't exit here - let the application try to continue
+    }));
+
     // Initialize logging
     env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or("info")
@@ -398,6 +404,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Err(e) = startup::disable_startup() {
                         log::warn!("Failed to disable startup: {}", e);
                     }
+                }
+
+                // Verify startup registration integrity
+                if let Err(e) = startup::verify_startup_registration() {
+                    log::warn!("Failed to verify startup registration: {}", e);
                 }
                 
                 // Mark first run as complete
@@ -703,12 +714,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
 
-                    // Keep launcher visible as a full desktop application
-                    // Clear search and reset selection for continued use
+                    // Hide launcher after successful launch (expected behavior for a launcher)
                     let _ = launcher_weak.upgrade_in_event_loop(|launcher: Launcher| {
-                        launcher.invoke_clear_search();
-                        launcher.set_selected_index(0);
-                        // Launcher stays visible - user can continue searching
+                        launcher.hide().ok();
+                        launcher.set_is_visible(false);
+                        log::debug!("Window hidden after launch");
                     });
                 } else {
                     log::warn!("No result found at index {}", index);
@@ -754,18 +764,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // Service watchdog thread - ensures tray stays alive and monitors health
+    {
+        let app_running_watchdog = Arc::clone(&app_running);
+        std::thread::spawn(move || {
+            log::info!("Service watchdog started");
+            while app_running_watchdog.load(Ordering::Relaxed) {
+                // Update keepalive file every 30 seconds
+                if let Err(e) = single_instance::touch_keepalive() {
+                    log::warn!("Failed to update keepalive file: {}", e);
+                }
+                std::thread::sleep(std::time::Duration::from_secs(30));
+                log::debug!("Service watchdog: application is healthy");
+            }
+            log::info!("Service watchdog shutting down");
+        });
+    }
+
     // NOTE: UI update polling thread removed - results are now updated immediately in on_search_changed
 
     // Start hidden, waiting for hotkey
     launcher.hide()?;
     launcher.set_is_visible(false);
 
-    // Run the event loop
+    // Run the event loop with error recovery
     log::info!("=== EVENT LOOP STARTING ===");
     log::info!("Nexus ready. Press Alt+Space to activate. Running in system tray.");
     log::info!("The event loop should run FOREVER until Exit is clicked in tray menu.");
-    
-    slint::run_event_loop()?;
+
+    // Run event loop with error handling - if it fails, log and retry
+    loop {
+        match slint::run_event_loop() {
+            Ok(()) => {
+                // Normal exit (user clicked Exit in tray)
+                break;
+            }
+            Err(e) => {
+                log::error!("Event loop error: {}. Attempting to restart...", e);
+                // Small delay before retry to prevent tight loop on persistent errors
+                std::thread::sleep(std::time::Duration::from_millis(1000));
+                continue;
+            }
+        }
+    }
 
     // If we get here, the event loop has exited - this should only happen when user clicks "Exit" in tray
     log::info!("=== EVENT LOOP ENDED ===");

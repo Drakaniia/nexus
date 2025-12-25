@@ -64,7 +64,27 @@ impl TrayManager {
 
     /// Load icon for the tray (try to load from resources)
     fn load_icon() -> Option<tray_icon::Icon> {
-        // Create a simple 32x32 pixel icon with a gradient
+        // Try to load the logo PNG file
+        // First try relative to executable location
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                let icon_path = exe_dir.join("../installerassets/icon.png");
+                if let Ok(image_data) = std::fs::read(&icon_path) {
+                    if let Ok(icon) = tray_icon::Icon::from_png(&image_data, 32.0, 32.0) {
+                        return Some(icon);
+                    }
+                }
+            }
+        }
+
+        // Try direct path (for development)
+        if let Ok(image_data) = std::fs::read("installerassets/icon.png") {
+            if let Ok(icon) = tray_icon::Icon::from_png(&image_data, 32.0, 32.0) {
+                return Some(icon);
+            }
+        }
+
+        // Fallback: Create a simple 32x32 pixel icon with a gradient
         let mut pixels = Vec::with_capacity(32 * 32 * 4);
         for y in 0..32 {
             for x in 0..32 {

@@ -2,6 +2,9 @@
 
 A lightweight, modern Windows launcher that runs as a background service with advanced configuration and auto-update capabilities.
 
+> [!IMPORTANT]
+> Active development in progress!
+
 ## Features
 
 ✨ **Lightning Fast**: Instant application search and launch  

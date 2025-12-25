@@ -31,6 +31,8 @@ mod wizard;
 mod settings_ui;
 mod updater;
 
+use updater::UpdateInfo;
+
 use config::AppConfig;
 use single_instance::SingleInstance;
 use tray::{TrayEvent, TrayManager, check_tray_event};
@@ -144,6 +146,16 @@ pub enum AppType {
     DesktopApp,
     UwpApp,
     File,
+}
+
+impl std::fmt::Display for AppType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AppType::DesktopApp => write!(f, "Desktop"),
+            AppType::UwpApp => write!(f, "UWP"),
+            AppType::File => write!(f, "File"),
+        }
+    }
 }
 
 impl LauncherState {
@@ -319,6 +331,31 @@ impl From<&SearchResultData> for SearchResult {
     }
 }
 
+/// Show a system notification about available updates
+fn show_update_notification(update_info: &UpdateInfo) -> Result<(), Box<dyn std::error::Error>> {
+    log::info!("Showing update notification for version {}", update_info.version);
+
+    // For now, use Windows toast notifications if available
+    // In a real implementation, you might use a proper notification library
+
+    #[cfg(windows)]
+    {
+        // Try to use Windows toast notifications
+        // This is a simplified implementation - in practice you'd use a notification crate
+        log::info!("Update available: {}", update_info.version);
+        log::info!("Download URL: {}", update_info.download_url);
+        log::info!("Release notes: {}", update_info.release_notes);
+        // TODO: Implement actual Windows toast notification
+    }
+
+    #[cfg(not(windows))]
+    {
+        log::info!("Update notification: {} is available", update_info.version);
+    }
+
+    Ok(())
+}
+
 /// Get the center position for the launcher window on the monitor where the cursor is located.
 /// Returns a LogicalPosition for use with Slint's set_position method.
 fn get_window_center_position() -> LogicalPosition {
@@ -441,12 +478,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let launcher = Launcher::new()?;
     log::info!("Launcher UI created");
 
+    // Note: Dummy window removed - modern Slint should keep event loop alive with main window
+
     // CRITICAL: Prevent window close from exiting the event loop!
-    // When user clicks X or closes the window, we just hide it instead of exiting
-    launcher.window().on_close_requested(|| {
-        log::info!("Window close requested - hiding instead of exiting");
-        // Return KeepWindowShown to tell Slint NOT to exit the event loop
-        // The window will remain "shown" from Slint's perspective but we'll hide it
+    // When user clicks X or closes the window, we hide it but keep it "shown" to Slint
+    let launcher_weak_for_close = launcher.as_weak();
+    launcher.window().on_close_requested(move || {
+        log::info!("=== WINDOW CLOSE REQUESTED ===");
+        log::info!("Hiding window but keeping it 'shown' to prevent event loop exit");
+
+        // Move window off-screen and hide it, but return KeepWindowShown so Slint doesn't exit
+        if let Some(launcher) = launcher_weak_for_close.upgrade() {
+            let window = launcher.window();
+            window.set_position(slint::LogicalPosition::new(-10000.0, -10000.0));
+            launcher.hide().ok();
+            launcher.set_is_visible(false);
+            log::info!("Window moved off-screen and hidden successfully");
+        } else {
+            log::error!("Failed to upgrade launcher weak reference in close handler!");
+        }
+
+        log::info!("Returning KeepWindowShown to prevent event loop exit");
         CloseRequestResponse::KeepWindowShown
     });
 
@@ -465,10 +517,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::thread::spawn(move || {
             log::info!("Starting app discovery...");
             let apps = app_discovery::discover_apps();
-            log::info!("Discovered {} applications", apps.len());
-            
+            log::info!("App discovery completed: found {} applications", apps.len());
+
+            // Log some examples
+            for (i, app) in apps.iter().take(5).enumerate() {
+                log::debug!("  Discovered app {}: {} ({})", i+1, app.name, app.app_type);
+            }
+            if apps.len() > 5 {
+                log::debug!("  ... and {} more apps", apps.len() - 5);
+            }
+
             if let Ok(mut state) = state.lock() {
                 state.apps = apps;
+                log::info!("App discovery results stored in state");
+            } else {
+                log::error!("Failed to store discovered apps in state!");
             }
         });
     }
@@ -506,14 +569,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let _ = launcher_weak_hotkey.upgrade_in_event_loop(move |launcher: Launcher| {
                         let is_visible = launcher.get_is_visible();
                         if is_visible {
+                            // Move off-screen and hide, but keep "shown" to prevent event loop exit
+                            launcher.window().set_position(slint::LogicalPosition::new(-10000.0, -10000.0));
                             launcher.hide().ok();
                             launcher.set_is_visible(false);
-                            log::debug!("Window hidden");
+                            log::debug!("Window hidden (moved off-screen)");
                         } else {
                             // Update last shown time to prevent immediate hiding due to focus race
                             *last_shown_time_clone.lock().unwrap() = std::time::Instant::now();
 
-                            // Position window first using Slint's built-in method
+                            // Position window correctly (not off-screen)
                             launcher.window().set_position(position);
 
                             // Show the window FIRST (required for window handle to be valid)
@@ -526,11 +591,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 log::warn!("Failed to configure window styles: {}", e);
                             }
 
-                            // Clear search and focus input
+                            // Clear search and prepare UI first
+                            launcher.set_search_text("".into());
                             launcher.invoke_clear_search();
                             launcher.set_selected_index(0);
+
+                            // Enable focus for the launcher window so it can receive keyboard input
+                            log::debug!("Enabling focus for launcher window...");
+                            if let Err(e) = platform_window::enable_launcher_focus(launcher.window()) {
+                                log::warn!("Failed to enable focus for launcher: {}", e);
+                            } else {
+                                log::debug!("Focus enabled successfully");
+                            }
+
+                            // Small delay to ensure Windows focus APIs have taken effect
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+
+                            // Now focus the input field
                             launcher.invoke_focus_input();
-                            log::debug!("Window shown and focused");
+                            log::debug!("Window shown and focused (hotkey)");
                         }
                     });
                 }
@@ -575,23 +654,67 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             log::warn!("Failed to configure window styles: {}", e);
                         }
 
+                        // Enable focus for the launcher window so it can receive keyboard input
+                        log::debug!("Enabling focus for launcher window (tray)...");
+                        if let Err(e) = platform_window::enable_launcher_focus(launcher.window()) {
+                            log::warn!("Failed to enable focus for launcher: {}", e);
+                        } else {
+                            log::debug!("Focus enabled successfully (tray)");
+                        }
+
+                        // Clear search state
+                        launcher.set_search_text("".into());
                         launcher.invoke_clear_search();
                         launcher.set_selected_index(0);
+
+                        // Small delay to ensure Windows focus APIs have taken effect
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+
+                        // Focus the input field
                         launcher.invoke_focus_input();
+                        log::debug!("Search cleared and input focused for tray show");
                     });
                 }
                 TrayEvent::Settings => {
                     log::info!("Tray: Settings clicked");
                     let config_clone = config_for_tray.clone();
-                    
+
                     let launcher_weak_settings = launcher_weak_tray.clone();
-                    
+
                     // Use a thread to show the settings window
                     // In a more complex app we would track the window instance
                     // but for now we'll just spawn it
                     let _ = std::thread::spawn(move || {
                         if let Err(e) = settings_ui::SettingsManager::show(&config_clone, launcher_weak_settings) {
                             log::error!("Failed to show settings: {}", e);
+                        }
+                    });
+                }
+                TrayEvent::CheckUpdates => {
+                    log::info!("Tray: Check for Updates clicked");
+
+                    // Run update check in a background thread
+                    std::thread::spawn(move || {
+                        match updater::check_for_updates(false) {
+                            Ok(Some(update_info)) => {
+                                log::info!("Update available: {} ({})", update_info.version, update_info.published_at);
+
+                                // Show notification about available update
+                                if let Err(e) = show_update_notification(&update_info) {
+                                    log::warn!("Failed to show update notification: {}", e);
+                                }
+
+                                // TODO: Add "Update Now" option to tray menu or show dialog
+                                // For now, just log the update info
+                            }
+                            Ok(None) => {
+                                log::info!("No updates available");
+                                // TODO: Show "You're up to date" notification
+                            }
+                            Err(e) => {
+                                log::error!("Failed to check for updates: {}", e);
+                                // TODO: Show error notification
+                            }
                         }
                     });
                 }
@@ -618,46 +741,104 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let state = Arc::clone(&state);
         let current_results = Arc::clone(&current_results);
         let launcher_weak_search = launcher_weak.clone();
-        
+
         launcher.on_search_changed(move |query: slint::SharedString| {
             let query_str = query.to_string();
-            log::debug!("Search changed: '{}'", query_str);
-            
+            log::debug!("Search changed: '{}' (len: {})", query_str, query_str.len());
+
             if query_str.is_empty() {
+                log::debug!("Query is empty, clearing results");
                 // Clear results immediately
                 if let Ok(mut results) = current_results.lock() {
                     results.clear();
                 }
                 // Update UI immediately
                 let _ = launcher_weak_search.upgrade_in_event_loop(|launcher: Launcher| {
-                    let model = std::rc::Rc::new(VecModel::<SearchResult>::default());
-                    launcher.set_results(model.into());
+                    // Always create a fresh model to ensure UI updates properly
+                    let model: slint::ModelRc<SearchResult> = std::rc::Rc::new(VecModel::<SearchResult>::default()).into();
+                    launcher.set_results(model);
                     launcher.set_selected_index(0);
+                    log::debug!("UI cleared - no results shown");
                 });
                 return;
             }
 
             // Perform search
             let search_results = if let Ok(state) = state.lock() {
-                let results = state.search(&query_str);
-                log::debug!("Search returned {} results", results.len());
-                results
+                log::debug!("Searching among {} discovered apps", state.apps.len());
+
+                // If no apps are discovered yet, add a placeholder result
+                let results = if state.apps.is_empty() && !query_str.is_empty() {
+                    log::debug!("No apps discovered yet, showing calculator/web search only");
+
+                    let mut results = Vec::new();
+
+                    // Check for calculator expression
+                    if let Some(calc_result) = actions::try_calculate(&query_str) {
+                        results.push(calc_result);
+                    }
+
+                    // Check for web search
+                    if let Some(web_result) = actions::check_web_search(&query_str) {
+                        results.push(web_result);
+                    }
+
+                    // Add fallback results for testing if no apps are found
+                    if results.is_empty() {
+                        // Always add calculator for testing
+                        if let Some(calc_result) = actions::try_calculate("2+2") {
+                            results.push(calc_result);
+                        }
+
+                        // Add web search for testing
+                        if let Some(web_result) = actions::check_web_search("test") {
+                            results.push(web_result);
+                        }
+
+                        // Add a status message
+                        results.push(SearchResultData {
+                            name: "Type to search applications...".to_string(),
+                            description: "Calculator and web search are always available".to_string(),
+                            path: std::path::PathBuf::new(),
+                            result_type: "info".to_string(),
+                        });
+                    }
+                    results
+                } else {
+                    let results = state.search(&query_str);
+                    log::debug!("Search for '{}' returned {} results", query_str, results.len());
+
+                    // Debug: Log first few results
+                    for (i, result) in results.iter().take(3).enumerate() {
+                        log::debug!("  Result {}: {} ({})", i+1, result.name, result.result_type);
+                    }
+                    if results.len() > 3 {
+                        log::debug!("  ... and {} more results", results.len() - 3);
+                    }
+                    results
+                };
             } else {
+                log::error!("Failed to lock state for search!");
                 Vec::new()
             };
 
             // Store results
             if let Ok(mut results) = current_results.lock() {
                 *results = search_results.clone();
+            } else {
+                log::error!("Failed to lock current_results for storage!");
             }
 
             // Update UI IMMEDIATELY (not in polling thread)
             let slint_results: Vec<SearchResult> = search_results.iter().map(|r| r.into()).collect();
+            log::debug!("Converted {} results to Slint format", slint_results.len());
+
             let _ = launcher_weak_search.upgrade_in_event_loop(move |launcher: Launcher| {
-                let model = std::rc::Rc::new(VecModel::from(slint_results));
-                launcher.set_results(model.into());
+                // Always create a fresh model to ensure UI updates properly
+                let model: slint::ModelRc<SearchResult> = std::rc::Rc::new(VecModel::from(slint_results)).into();
+                launcher.set_results(model);
                 launcher.set_selected_index(0);
-                log::debug!("UI updated with search results");
+                log::debug!("UI updated with {} search results (fresh model)", slint_results.len());
             });
         });
     }
@@ -716,9 +897,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     // Hide launcher after successful launch (expected behavior for a launcher)
                     let _ = launcher_weak.upgrade_in_event_loop(|launcher: Launcher| {
+                        // Move off-screen and hide, but keep "shown" to prevent event loop exit
+                        launcher.window().set_position(slint::LogicalPosition::new(-10000.0, -10000.0));
                         launcher.hide().ok();
                         launcher.set_is_visible(false);
-                        log::debug!("Window hidden after launch");
+                        log::debug!("Window hidden after launch (moved off-screen)");
                     });
                 } else {
                     log::warn!("No result found at index {}", index);
@@ -732,8 +915,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let launcher_weak = launcher_weak.clone();
         launcher.on_escape_pressed(move || {
             let _ = launcher_weak.upgrade_in_event_loop(|launcher: Launcher| {
+                // Move off-screen and hide, but keep "shown" to prevent event loop exit
+                launcher.window().set_position(slint::LogicalPosition::new(-10000.0, -10000.0));
                 launcher.hide().ok();
                 launcher.set_is_visible(false);
+                log::debug!("Window hidden via escape (moved off-screen)");
             });
         });
     }
@@ -781,23 +967,77 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // Background update checker thread - checks for updates every 24 hours
+    {
+        let app_running_updater = Arc::clone(&app_running);
+        std::thread::spawn(move || {
+            log::info!("Background update checker started");
+
+            // Check for updates immediately on startup (after a short delay)
+            std::thread::sleep(std::time::Duration::from_secs(30));
+
+            while app_running_updater.load(Ordering::Relaxed) {
+                log::debug!("Checking for updates in background...");
+
+                match updater::check_for_updates(false) {
+                    Ok(Some(update_info)) => {
+                        log::info!("Background update check found: {}", update_info.version);
+                        if let Err(e) = show_update_notification(&update_info) {
+                            log::warn!("Failed to show background update notification: {}", e);
+                        }
+                    }
+                    Ok(None) => {
+                        log::debug!("No updates available");
+                    }
+                    Err(e) => {
+                        log::debug!("Background update check failed: {}", e);
+                    }
+                }
+
+                // Wait 24 hours before next check
+                for _ in 0..(24 * 60 * 2) { // Check every 30 seconds for 24 hours
+                    std::thread::sleep(std::time::Duration::from_secs(30));
+                    if !app_running_updater.load(Ordering::Relaxed) {
+                        break;
+                    }
+                }
+            }
+            log::info!("Background update checker shutting down");
+        });
+    }
+
     // NOTE: UI update polling thread removed - results are now updated immediately in on_search_changed
 
-    // Start hidden, waiting for hotkey
+    // Start "hidden" but keep window "shown" to prevent event loop exit
+    // Position off-screen so it's not visible to user
+    launcher.window().set_position(slint::LogicalPosition::new(-10000.0, -10000.0));
     launcher.hide()?;
     launcher.set_is_visible(false);
+    log::info!("Launcher window positioned off-screen and hidden, but kept 'shown' for event loop");
 
     // Run the event loop with error recovery
     log::info!("=== EVENT LOOP STARTING ===");
     log::info!("Nexus ready. Press Alt+Space to activate. Running in system tray.");
     log::info!("The event loop should run FOREVER until Exit is clicked in tray menu.");
+    log::info!("Window is kept 'shown' off-screen to prevent event loop exit.");
 
     // Run event loop with error handling - if it fails, log and retry
     loop {
+        log::info!("Starting event loop iteration...");
         match slint::run_event_loop() {
             Ok(()) => {
-                // Normal exit (user clicked Exit in tray)
-                break;
+                log::warn!("Event loop returned Ok(()) - this should only happen on explicit exit!");
+                log::info!("Checking if user clicked Exit in tray menu...");
+                // Check if app_running was set to false (user clicked Exit)
+                if !app_running.load(Ordering::Relaxed) {
+                    log::info!("User clicked Exit in tray menu - shutting down normally");
+                    break;
+                } else {
+                    log::error!("Event loop exited unexpectedly! Window may have been destroyed.");
+                    log::info!("Attempting to restart event loop...");
+                    std::thread::sleep(std::time::Duration::from_millis(1000));
+                    continue;
+                }
             }
             Err(e) => {
                 log::error!("Event loop error: {}. Attempting to restart...", e);

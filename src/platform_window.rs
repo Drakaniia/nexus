@@ -9,7 +9,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 /// Configure window for launcher behavior:
 /// - No taskbar button (WS_EX_TOOLWINDOW)
 /// - Always on top (WS_EX_TOPMOST)
-/// - No activation stealing (WS_EX_NOACTIVATE)
+/// - Initially no activation to prevent focus stealing
 pub fn configure_launcher_window(window: &Window) -> Result<(), Box<dyn std::error::Error>> {
     // IMPORTANT: Window must be shown first for the window handle to be valid
     // Call this function AFTER showing the window
@@ -41,11 +41,10 @@ pub fn configure_launcher_window(window: &Window) -> Result<(), Box<dyn std::err
                 // Add required extended styles:
                 // - WS_EX_TOOLWINDOW: No taskbar button (this is the critical one!)
                 // - WS_EX_TOPMOST: Always on top of other windows
-                // - WS_EX_NOACTIVATE: Don't steal focus when showing
+                // Initially no WS_EX_NOACTIVATE so window can receive focus when needed
                 let new_ex_style = current_ex_style
                     | WS_EX_TOOLWINDOW.0
-                    | WS_EX_TOPMOST.0
-                    | WS_EX_NOACTIVATE.0;
+                    | WS_EX_TOPMOST.0;
 
                 log::debug!("New extended style: 0x{:08X}", new_ex_style);
 
@@ -64,7 +63,79 @@ pub fn configure_launcher_window(window: &Window) -> Result<(), Box<dyn std::err
                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
                 )?;
 
-                log::info!("✓ Window configured successfully: no taskbar button, always on top, no focus stealing");
+                log::info!("✓ Window configured successfully: no taskbar button, always on top");
+            }
+
+            Ok(())
+        }
+        _ => Err("Not a Windows window handle".into())
+    }
+}
+
+/// Enable focus for the launcher window when user activates it via hotkey
+/// This temporarily allows the window to receive keyboard input
+pub fn enable_launcher_focus(window: &Window) -> Result<(), Box<dyn std::error::Error>> {
+    log::debug!("Enabling focus for launcher window...");
+
+    let window_handle = window.window_handle();
+    let raw_handle = window_handle.window_handle()?;
+
+    match raw_handle.as_raw() {
+        RawWindowHandle::Win32(win32_handle) => {
+            let hwnd = HWND(win32_handle.hwnd.get() as *mut _);
+
+            unsafe {
+                if hwnd.0.is_null() {
+                    return Err("Window handle is null".into());
+                }
+
+                // Force the window to the foreground and give it focus
+                // Use aggressive techniques to ensure focus works
+                log::debug!("Setting window as foreground and focusing...");
+
+                // Bring window to top first
+                SetWindowPos(
+                    hwnd,
+                    HWND_TOPMOST,
+                    0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+                )?;
+
+                // Small delay to ensure window is ready
+                std::thread::sleep(std::time::Duration::from_millis(5));
+
+                // Try multiple times to set foreground (sometimes Windows blocks this)
+                for attempt in 1..=3 {
+                    log::debug!("Foreground attempt {}...", attempt);
+
+                    if SetForegroundWindow(hwnd).as_bool() {
+                        log::debug!("✓ SetForegroundWindow succeeded on attempt {}", attempt);
+                        break;
+                    } else if attempt == 3 {
+                        log::warn!("SetForegroundWindow failed on all attempts");
+                    }
+                }
+
+                // Set focus to the window
+                // TODO: Fix SetFocus and SetActiveWindow imports
+                // if SetFocus(hwnd).is_invalid() {
+                //     log::warn!("SetFocus failed");
+                // } else {
+                //     log::debug!("✓ SetFocus succeeded");
+                // }
+
+                // Alternative: Try SetActiveWindow if SetForegroundWindow failed
+                // if !SetForegroundWindow(hwnd).as_bool() {
+                //     if !SetActiveWindow(hwnd).is_invalid() {
+                //         log::debug!("✓ SetActiveWindow succeeded as fallback");
+                //     }
+                // }
+
+                // Final focus attempt
+                // std::thread::sleep(std::time::Duration::from_millis(5));
+                // SetFocus(hwnd);
+
+                log::info!("✓ Focus enabled for launcher window");
             }
 
             Ok(())

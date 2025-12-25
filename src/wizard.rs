@@ -7,7 +7,8 @@ use std::rc::Rc;
 use std::cell::RefCell;
 
 // slint::include_modules!(); // Removed to avoid conflict with crate::ui
-use crate::ui::{SetupWizard, WizardScreen};
+use slint::ComponentHandle;
+use crate::ui::WizardScreen;
 
 /// Show the setup wizard and collect user configuration
 pub fn show_wizard(config: &mut AppConfig) -> Result<(), Box<dyn Error>> {
@@ -24,86 +25,110 @@ pub fn show_wizard(config: &mut AppConfig) -> Result<(), Box<dyn Error>> {
     let hotkey_index = get_hotkey_index_from_config(config);
     wizard.set_selected_hotkey_index(hotkey_index as i32);
 
-    // Create a shared config reference for the callbacks
-    let config_ref = Rc::new(RefCell::new(config));
+    // Create a shared OWNED config for the callbacks to avoid lifetime issues
+    // We will copy values back to the original config at the end
+    let local_config = Rc::new(RefCell::new(config.clone()));
+    let wizard_weak = wizard.as_weak();
 
     // Handle Next button clicks
-    let config_next = Rc::clone(&config_ref);
+    let config_next = Rc::clone(&local_config);
+    let wizard_weak_next = wizard_weak.clone();
     wizard.on_next_clicked(move || {
-        let mut config = config_next.borrow_mut();
-        let current_screen = wizard.get_current_screen();
+        // Use weak reference to avoid upgrade failure panic or leaks
+        if let Some(wizard) = wizard_weak_next.upgrade() {
+            let mut config = config_next.borrow_mut();
+            let current_screen = wizard.get_current_screen();
 
-        match current_screen {
-            WizardScreen::Welcome => {
-                wizard.set_current_screen(WizardScreen::Hotkey);
+            match current_screen {
+                WizardScreen::Welcome => {
+                    wizard.set_current_screen(WizardScreen::Hotkey);
+                }
+                WizardScreen::Hotkey => {
+                    // Apply hotkey selection to config
+                    let selected_index = wizard.get_selected_hotkey_index() as usize;
+                    apply_hotkey_selection(&mut config, selected_index);
+                    wizard.set_current_screen(WizardScreen::Startup);
+                }
+                WizardScreen::Startup => {
+                    // Apply startup settings to config
+                    config.startup.enabled = wizard.get_run_on_startup();
+                    config.startup.show_on_startup = wizard.get_show_on_startup();
+                    wizard.set_current_screen(WizardScreen::Complete);
+                }
+                _ => {}
             }
-            WizardScreen::Hotkey => {
-                // Apply hotkey selection to config
-                let selected_index = wizard.get_selected_hotkey_index() as usize;
-                apply_hotkey_selection(&mut config, selected_index);
-                wizard.set_current_screen(WizardScreen::Startup);
-            }
-            WizardScreen::Startup => {
-                // Apply startup settings to config
-                config.startup.enabled = wizard.get_run_on_startup();
-                config.startup.show_on_startup = wizard.get_show_on_startup();
-                wizard.set_current_screen(WizardScreen::Complete);
-            }
-            _ => {}
         }
     });
 
     // Handle Back button clicks
+    let wizard_weak_back = wizard_weak.clone();
     wizard.on_back_clicked(move || {
-        let current_screen = wizard.get_current_screen();
+        if let Some(wizard) = wizard_weak_back.upgrade() {
+            let current_screen = wizard.get_current_screen();
 
-        match current_screen {
-            WizardScreen::Hotkey => {
-                wizard.set_current_screen(WizardScreen::Welcome);
+            match current_screen {
+                WizardScreen::Hotkey => {
+                    wizard.set_current_screen(WizardScreen::Welcome);
+                }
+                WizardScreen::Startup => {
+                    wizard.set_current_screen(WizardScreen::Hotkey);
+                }
+                WizardScreen::Complete => {
+                    wizard.set_current_screen(WizardScreen::Startup);
+                }
+                _ => {}
             }
-            WizardScreen::Startup => {
-                wizard.set_current_screen(WizardScreen::Hotkey);
-            }
-            WizardScreen::Complete => {
-                wizard.set_current_screen(WizardScreen::Startup);
-            }
-            _ => {}
         }
     });
 
     // Handle Test Hotkey button
+    let wizard_weak_test = wizard_weak.clone();
     wizard.on_test_hotkey_clicked(move || {
-        let selected_index = wizard.get_selected_hotkey_index() as usize;
-        let (modifiers, key) = get_hotkey_from_index(selected_index);
+        if let Some(wizard) = wizard_weak_test.upgrade() {
+            let selected_index = wizard.get_selected_hotkey_index() as usize;
+            let (modifiers, key) = get_hotkey_from_index(selected_index);
 
-        log::info!("Testing hotkey: {} + {}", modifiers, key);
-        // TODO: Could show a notification or temporarily test the hotkey
-        // For now, just log it
+            log::info!("Testing hotkey: {} + {}", modifiers, key);
+            // TODO: Could show a notification or temporarily test the hotkey
+        }
     });
 
     // Handle Finish button
-    let config_finish = Rc::clone(&config_ref);
+    let config_finish = Rc::clone(&local_config);
+    let wizard_weak_finish = wizard_weak.clone();
     wizard.on_finish_clicked(move || {
-        let mut config = config_finish.borrow_mut();
+        if let Some(wizard) = wizard_weak_finish.upgrade() {
+            let mut config = config_finish.borrow_mut();
 
-        // Apply final settings
-        let selected_index = wizard.get_selected_hotkey_index() as usize;
-        apply_hotkey_selection(&mut config, selected_index);
-        config.startup.enabled = wizard.get_run_on_startup();
-        config.startup.show_on_startup = wizard.get_show_on_startup();
+            // Apply final settings
+            let selected_index = wizard.get_selected_hotkey_index() as usize;
+            apply_hotkey_selection(&mut config, selected_index);
+            config.startup.enabled = wizard.get_run_on_startup();
+            config.startup.show_on_startup = wizard.get_show_on_startup();
 
-        log::info!("Wizard completed - settings applied:");
-        log::info!("  Hotkey: {} + {}", config.hotkey.modifiers.join("+"), config.hotkey.key);
-        log::info!("  Run on startup: {}", config.startup.enabled);
-        log::info!("  Show on startup: {}", config.startup.show_on_startup);
+            log::info!("Wizard completed - settings applied:");
+            log::info!("  Hotkey: {} + {}", config.hotkey.modifiers.join("+"), config.hotkey.key);
+            log::info!("  Run on startup: {}", config.startup.enabled);
+            log::info!("  Show on startup: {}", config.startup.show_on_startup);
 
-        // Close the wizard
-        wizard.hide().ok();
+            // Close the wizard
+            wizard.hide().ok();
+        }
     });
 
     // Show the wizard modally
     wizard.show()?;
-    slint::run_event_loop_until_quit()?;
+
+    // Wait for the wizard window to be closed by polling its visibility
+    // This approach allows the UI to remain responsive while waiting for the wizard to finish
+    while wizard.window().is_visible() {
+        // Yield control briefly to allow UI events to be processed
+        // This is not as elegant as using Slint's event loop, but works for this use case
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+
+    // Copy modified config back to output
+    *config = local_config.borrow().clone();
 
     Ok(())
 }

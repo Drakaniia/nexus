@@ -1,0 +1,553 @@
+// First-Run Wizard UI for Nexus
+// Multi-screen configuration wizard shown on first application launch
+
+import { Button, VerticalBox, HorizontalBox, GroupBox, CheckBox } from "std-widgets.slint";
+
+// Wizard screen enum
+export enum WizardScreen {
+    Welcome,
+    Hotkey,
+    Startup,
+    Complete
+}
+
+// Data structures
+export struct HotkeyOption {
+    label: string,
+    modifiers: string,
+    key: string
+}
+
+// Main wizard window
+export component SetupWizard inherits Window {
+    title: "Nexus Setup Wizard";
+    preferred-width: 600px;
+    preferred-height: 450px;
+    
+    // State properties
+    in-out property <WizardScreen> current-screen: WizardScreen.Welcome;
+    in-out property <int> selected-hotkey-index: 0;
+    in-out property <bool> run-on-startup: true;
+    in-out property <bool> show-on-startup: false;
+    
+    // Hotkey options
+    property <[HotkeyOption]> hotkey-options: [
+        { label: "Alt + Space (Recommended)", modifiers: "Alt", key: "Space" },
+        { label: "Ctrl + Space", modifiers: "Ctrl", key: "Space" },
+        { label: "Win + Space", modifiers: "Win", key: "Space" },
+        { label: "Ctrl + Shift + Space", modifiers: "Ctrl+Shift", key: "Space" }
+    ];
+    
+    // Callbacks
+    callback next-clicked();
+    callback back-clicked();
+    callback finish-clicked();
+    callback test-hotkey-clicked();
+    
+    // Progress calculation
+    property <int> screen-number: current-screen == WizardScreen.Welcome ? 1 : 
+                                   current-screen == WizardScreen.Hotkey ? 2 :
+                                   current-screen == WizardScreen.Startup ? 3 : 4;
+    property <int> total-screens: 4;
+    
+    // Main layout
+    VerticalBox {
+        padding: 20px;
+        spacing: 15px;
+        
+        // Header with progress
+        Rectangle {
+            height: 60px;
+            background: #2D2D30;
+            border-radius: 8px;
+            
+            HorizontalBox {
+                padding: 15px;
+                spacing: 10px;
+                alignment: space-between;
+                
+                VerticalBox {
+                    alignment: start;
+                    
+                    Text {
+                        text: "Nexus Setup";
+                        font-size: 18px;
+                        font-weight: 700;
+                        color: #FFFFFF;
+                    }
+                    
+                    Text {
+                        text: "Step " + screen-number + " of " + total-screens;
+                        font-size: 12px;
+                        color: #999999;
+                    }
+                }
+                
+                // Progress bar
+                Rectangle {
+                    width: 200px;
+                    height: 8px;
+                    background: #3E3E42;
+                    border-radius: 4px;
+                    
+                    Rectangle {
+                        width: parent.width * screen-number / total-screens;
+                        height: parent.height;
+                        background: #007ACC;
+                        border-radius: 4px;
+                    }
+                }
+            }
+        }
+        
+        // Content area
+        Rectangle {
+            background: #1E1E1E;
+            border-radius: 8px;
+            
+            // Welcome Screen
+            if current-screen == WizardScreen.Welcome: VerticalBox {
+                padding: 30px;
+                spacing: 20px;
+                alignment: center;
+                
+                Text {
+                    text: "Welcome to Nexus! 🚀";
+                    font-size: 24px;
+                    font-weight: 700;
+                    color: #FFFFFF;
+                    horizontal-alignment: center;
+                }
+                
+                Text {
+                    text: "A fast, efficient Windows launcher for power users";
+                    font-size: 14px;
+                    color: #CCCCCC;
+                    horizontal-alignment: center;
+                }
+                
+                Rectangle { height: 20px; }
+                
+                VerticalBox {
+                    spacing: 12px;
+                    
+                    HorizontalBox {
+                        spacing: 10px;
+                        
+                        Text {
+                            text: "🔍";
+                            font-size: 20px;
+                        }
+                        
+                        VerticalBox {
+                            spacing: 2px;
+                            
+                            Text {
+                                text: "Lightning-fast search";
+                                font-size: 14px;
+                                font-weight: 600;
+                                color: #FFFFFF;
+                            }
+                            
+                            Text {
+                                text: "Find apps, files, and more instantly";
+                                font-size: 12px;
+                                color: #999999;
+                            }
+                        }
+                    }
+                    
+                    HorizontalBox {
+                        spacing: 10px;
+                        
+                        Text {
+                            text: "⌨️";
+                            font-size: 20px;
+                        }
+                        
+                        VerticalBox {
+                            spacing: 2px;
+                            
+                            Text {
+                                text: "Global hotkey";
+                                font-size: 14px;
+                                font-weight: 600;
+                                color: #FFFFFF;
+                            }
+                            
+                            Text {
+                                text: "Access from anywhere with a simple key combination";
+                                font-size: 12px;
+                                color: #999999;
+                            }
+                        }
+                    }
+                    
+                    HorizontalBox {
+                        spacing: 10px;
+                        
+                        Text {
+                            text: "🧮";
+                            font-size: 20px;
+                        }
+                        
+                        VerticalBox {
+                            spacing: 2px;
+                            
+                            Text {
+                                text: "Built-in calculator & web search";
+                                font-size: 14px;
+                                font-weight: 600;
+                                color: #FFFFFF;
+                            }
+                            
+                            Text {
+                                text: "Type \"2+2\" or \"g search term\" directly";
+                                font-size: 12px;
+                                color: #999999;
+                            }
+                        }
+                    }
+                }
+                
+                Rectangle { height: 20px; }
+                
+                Text {
+                    text: "Let's get you set up...";
+                    font-size: 13px;
+                    color: #CCCCCC;
+                    horizontal-alignment: center;
+                }
+            }
+            
+            // Hotkey Configuration Screen
+            if current-screen == WizardScreen.Hotkey: VerticalBox {
+                padding: 30px;
+                spacing: 20px;
+                
+                Text {
+                    text: "Choose Your Hotkey";
+                    font-size: 20px;
+                    font-weight: 700;
+                    color: #FFFFFF;
+                }
+                
+                Text {
+                    text: "This hotkey will open Nexus from anywhere in Windows";
+                    font-size: 13px;
+                    color: #999999;
+                }
+                
+                Rectangle { height: 10px; }
+                
+                GroupBox {
+                    title: "Hotkey Options";
+                    
+                    VerticalBox {
+                        spacing: 12px;
+                        
+                        for option[index] in hotkey-options: Rectangle {
+                            height: 32px;
+                            border-radius: 4px;
+                            background: index == selected-hotkey-index ? #007ACC30 : transparent;
+                            
+                            HorizontalBox {
+                                padding: 8px;
+                                spacing: 10px;
+                                
+                                // Radio indicator
+                                Rectangle {
+                                    width: 18px;
+                                    height: 18px;
+                                    border-radius: 9px;
+                                    border-width: 2px;
+                                    border-color: index == selected-hotkey-index ? #007ACC : #666666;
+                                    
+                                    // Inner dot for selected state
+                                    if index == selected-hotkey-index: Rectangle {
+                                        width: 10px;
+                                        height: 10px;
+                                        border-radius: 5px;
+                                        background: #007ACC;
+                                        x: parent.width / 2 - self.width / 2;
+                                        y: parent.height / 2 - self.height / 2;
+                                    }
+                                }
+                                
+                                Text {
+                                    text: option.label;
+                                    font-size: 13px;
+                                    color: index == selected-hotkey-index ? #FFFFFF : #CCCCCC;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                Rectangle { height: 10px; }
+                
+HorizontalBox {
+                    spacing: 10px;
+                    
+                    Button {
+                        text: "Test Hotkey";
+                        primary: false;
+                        clicked => {
+                            test-hotkey-clicked();
+                        }
+                    }
+                    
+                    Text {
+                        text: "Try pressing the selected hotkey";
+                        font-size: 11px;
+                        color: #999999;
+                        vertical-alignment: center;
+                    }
+                }
+                
+                Rectangle {
+                    background: #2D2D30;
+                    border-radius: 4px;
+                    padding: 12px;
+                    
+                    Text {
+                        text: "💡 Tip: You can change this later in Settings";
+                        font-size: 11px;
+                        color: #CCCCCC;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+            
+            // Startup Configuration Screen
+            if current-screen == WizardScreen.Startup: VerticalBox {
+                padding: 30px;
+                spacing: 20px;
+                
+                Text {
+                    text: "Startup Settings";
+                    font-size: 20px;
+                    font-weight: 700;
+                    color: #FFFFFF;
+                }
+                
+                Text {
+                    text: "Configure how Nexus starts with Windows";
+                    font-size: 13px;
+                    color: #999999;
+                }
+                
+                Rectangle { height: 20px; }
+                
+                GroupBox {
+                    title: "Startup Behavior";
+                    
+                    VerticalBox {
+                        spacing: 15px;
+                        
+                        CheckBox {
+                            text: "Run Nexus on Windows startup (Recommended)";
+                            checked <=> run-on-startup;
+                        }
+                        
+                        CheckBox {
+                            text: "Show launcher window on startup";
+                            checked <=> show-on-startup;
+                            enabled: run-on-startup;
+                        }
+                    }
+                }
+                
+                Rectangle { height: 10px; }
+                
+                Rectangle {
+                    background: #2D2D30;
+                    border-radius: 4px;
+                    padding: 15px;
+                    
+                    VerticalBox {
+                        spacing: 8px;
+                        
+                        Text {
+                            text: "💡 How it works:";
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: #FFFFFF;
+                        }
+                        
+                        Text {
+                            text: "• Nexus runs quietly in the system tray";
+                            font-size: 11px;
+                            color: #CCCCCC;
+                        }
+                        
+                        Text {
+                            text: "• Press your hotkey anytime to launch";
+                            font-size: 11px;
+                            color: #CCCCCC;
+                        }
+                        
+                        Text {
+                            text: "• Right-click the tray icon for settings or to exit";
+                            font-size: 11px;
+                            color: #CCCCCC;
+                        }
+                    }
+                }
+            }
+            
+            // Complete Screen
+            if current-screen == WizardScreen.Complete: VerticalBox {
+                padding: 30px;
+                spacing: 20px;
+                alignment: center;
+                
+                Text {
+                    text: "Setup Complete! ✅";
+                    font-size: 24px;
+                    font-weight: 700;
+                    color: #4EC9B0;
+                    horizontal-alignment: center;
+                }
+                
+                Text {
+                    text: "Nexus is ready to use";
+                    font-size: 14px;
+                    color: #CCCCCC;
+                    horizontal-alignment: center;
+                }
+                
+                Rectangle { height: 20px; }
+                
+                GroupBox {
+                    title: "Quick Tips";
+                    
+                    VerticalBox {
+                        spacing: 12px;
+                        
+                        HorizontalBox {
+                            spacing: 10px;
+                            
+                            Text {
+                                text: "⌨️";
+                                font-size: 16px;
+                            }
+                            
+                            Text {
+                                text: "Press " + hotkey-options[selected-hotkey-index].label + " to search";
+                                font-size: 12px;
+                                color: #FFFFFF;
+                                wrap: word-wrap;
+                            }
+                        }
+                        
+                        HorizontalBox {
+                            spacing: 10px;
+                            
+                            Text {
+                                text: "🔍";
+                                font-size: 16px;
+                            }
+                            
+                            Text {
+                                text: "Type app names to find them instantly";
+                                font-size: 12px;
+                                color: #FFFFFF;
+                            }
+                        }
+                        
+                        HorizontalBox {
+                            spacing: 10px;
+                            
+                            Text {
+                                text: "🌐";
+                                font-size: 16px;
+                            }
+                            
+                            Text {
+                                text: "Use \"g query\" for Google search";
+                                font-size: 12px;
+                                color: #FFFFFF;
+                            }
+                        }
+                        
+                        HorizontalBox {
+                            spacing: 10px;
+                            
+                            Text {
+                                text: "🧮";
+                                font-size: 16px;
+                            }
+                            
+                            Text {
+                                text: "Type \"2+2\" to use the calculator";
+                                font-size: 12px;
+                                color: #FFFFFF;
+                            }
+                        }
+                        
+                        HorizontalBox {
+                            spacing: 10px;
+                            
+                            Text {
+                                text: "⚙️";
+                                font-size: 16px;
+                            }
+                            
+                            Text {
+                                text: "Right-click system tray icon for settings";
+                                font-size: 12px;
+                                color: #FFFFFF;
+                            }
+                        }
+                    }
+                }
+                
+                Rectangle { height: 10px; }
+                
+                Text {
+                    text: "Happy launching! 🎉";
+                    font-size: 13px;
+                    color: #CCCCCC;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+        
+        // Navigation buttons
+        Rectangle {
+            height: 50px;
+            
+            HorizontalBox {
+                padding: 10px;
+                spacing: 10px;
+                alignment: end;
+                
+                if current-screen != WizardScreen.Welcome && current-screen != WizardScreen.Complete: Button {
+                    text: "< Back";
+                    primary: false;
+                    clicked => {
+                        back-clicked();
+                    }
+                }
+                
+                if current-screen != WizardScreen.Complete: Button {
+                    text: current-screen == WizardScreen.Startup ? "Next >" : "Next >";
+                    primary: true;
+                    clicked => {
+                        next-clicked();
+                    }
+                }
+                
+                if current-screen == WizardScreen.Complete: Button {
+                    text: "Finish";
+                    primary: true;
+                    clicked => {
+                        finish-clicked();
+                    }
+                }
+            }
+        }
+    }
+}

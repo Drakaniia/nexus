@@ -1,5 +1,5 @@
 fn main() {
-    slint_build::compile("ui/main.slint").unwrap();
-    slint_build::compile("ui/wizard.slint").unwrap();
-    slint_build::compile("ui/settings.slint").unwrap();
+    slint_build::compile("ui/app_window.slint").unwrap();
+    slint_build::compile("ui/setup_wizard.slint").unwrap();
+    slint_build::compile("ui/app_settings.slint").unwrap();
 }

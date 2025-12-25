@@ -263,7 +263,7 @@ impl AppConfig {
             if path.exists() {
                 match fs::read_to_string(&path) {
                     Ok(content) => {
-                        match serde_json::from_str(&content) {
+                        match serde_json::from_str::<AppConfig>(&content) {
                             Ok(mut config) => {
                                 // Update portable mode flag in loaded config
                                 config.portable_mode = matches!(portable_mode, PortableMode::Portable);

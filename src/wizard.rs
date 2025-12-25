@@ -6,7 +6,7 @@ use std::error::Error;
 use std::rc::Rc;
 use std::cell::RefCell;
 
-slint::include_modules!();
+// slint::include_modules!(); // Removed to avoid conflict with crate::ui
 use crate::ui::{SetupWizard, WizardScreen};
 
 /// Show the setup wizard and collect user configuration

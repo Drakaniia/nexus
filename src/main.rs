@@ -508,7 +508,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Move window off-screen and hide it, but return KeepWindowShown so Slint doesn't exit
         if let Some(launcher) = launcher_weak_for_close.upgrade() {
-            let window: &slint::Window = launcher.window();
+            let window = slint::ComponentHandle::window(&launcher);
             window.set_position(slint::LogicalPosition::new(-10000.0, -10000.0));
             launcher.hide().ok();
             launcher.set_is_visible(false);

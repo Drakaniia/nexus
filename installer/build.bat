@@ -77,8 +77,21 @@ if not exist "target\release\nexus.exe" (
 REM Return to installer directory
 cd installer
 
+REM Prepare installer assets
+echo [4/7] Preparing installer assets...
+call prepare-assets.bat
+if %errorlevel% neq 0 (
+    echo.
+    echo ERROR: Asset preparation failed!
+    echo.
+    pause
+    exit /b 1
+)
+echo    Assets prepared successfully
+echo.
+
 REM Compile WiX source file
-echo [4/6] Compiling WiX source ^(nexus.wxs^)...
+echo [5/7] Compiling WiX source ^(nexus.wxs^)...
 candle nexus.wxs -ext WixUIExtension
 if %errorlevel% neq 0 (
     echo.
@@ -92,7 +105,7 @@ echo    Compilation successful
 echo.
 
 REM Link the MSI package
-echo [5/6] Linking MSI package...
+echo [6/7] Linking MSI package...
 light nexus.wixobj -ext WixUIExtension -out ..\Nexus-Setup.msi
 if %errorlevel% neq 0 (
     echo.
@@ -105,7 +118,7 @@ echo    Linking successful
 echo.
 
 REM Clean up intermediate files
-echo [6/6] Cleaning up...
+echo [7/7] Cleaning up...
 del nexus.wixobj 2>nul
 del nexus.wixpdb 2>nul
 echo    Cleanup complete

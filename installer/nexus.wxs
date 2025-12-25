@@ -16,10 +16,10 @@
            Manufacturer="$(var.Manufacturer)" 
            UpgradeCode="A1B2C3D4-E5F6-4789-A0B1-C2D3E4F5A6B7">
     
-    <Package InstallerVersion="200" 
-             Compressed="yes" 
+    <Package InstallerVersion="200"
+             Compressed="yes"
              InstallScope="perMachine"
-             Description="$(var.ProductName) - A lightweight Windows launcher application"
+             Description="$(var.ProductName) - A lightweight Windows launcher that runs as a background service"
              Comments="Visit https://github.com/Drakaniia/nexus for more information" />
 
     <!-- Ensure only one version is installed at a time -->
@@ -42,6 +42,10 @@
     
     <!-- Startup registration property -->
     <Property Id="RUNONSTARTUP" Value="1" />
+
+    <!-- Service-like installation properties -->
+    <Property Id="SERVICEMODE" Value="1" />
+    <Property Id="STARTUPDELAY" Value="2000" />
 
     <!-- Feature: Complete installation -->
     <Feature Id="ProductFeature" Title="Nexus" Level="1" 
@@ -180,18 +184,17 @@
     <!-- Component Group: Registry entries -->
     <ComponentGroup Id="RegistryComponents">
       <!-- Startup registration (conditional on RUNONSTARTUP property) -->
-      <Component Id="StartupRegistry" 
-                 Directory="INSTALLFOLDER" 
+      <Component Id="StartupRegistry"
+                 Directory="INSTALLFOLDER"
                  Guid="B8C9D0E1-F2A3-4456-B7C8-D9E0F1A2B3C4">
         <Condition>RUNONSTARTUP = 1</Condition>
-        
-        <RegistryValue Root="HKCU" 
-                       Key="Software\Microsoft\Windows\CurrentVersion\Run" 
-                       Name="$(var.ProductName)" 
-                       Type="string" 
-                       Value="&quot;[INSTALLFOLDER]nexus.exe&quot;" 
-                       KeyPath="yes" />
-      </Component>
+
+        <!-- Use delayed startup command for better reliability -->
+        <RegistryValue Root="HKCU"
+                       Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                       Name="$(var.ProductName)"
+                       Type="string"
+                       Value="cmd /c &quot;timeout /t 2 /nobreak >nul &amp;&amp; start &quot;&quot; &quot;[INSTALLFOLDER]nexus.exe&quot;&quot;"
       
       <!-- Application configuration registry keys -->
       <Component Id="ConfigRegistry" 
@@ -207,11 +210,19 @@
                        KeyPath="yes" />
         
         <!-- First run flag -->
-        <RegistryValue Root="HKCU" 
-                       Key="Software\$(var.Manufacturer)\$(var.ProductName)\Settings" 
-                       Name="FirstRun" 
-                       Type="integer" 
-                       Value="1" 
+        <RegistryValue Root="HKCU"
+                       Key="Software\$(var.Manufacturer)\$(var.ProductName)\Settings"
+                       Name="FirstRun"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="no" />
+
+        <!-- Service mode flag - indicates this is a background service -->
+        <RegistryValue Root="HKCU"
+                       Key="Software\$(var.Manufacturer)\$(var.ProductName)\Settings"
+                       Name="ServiceMode"
+                       Type="integer"
+                       Value="1"
                        KeyPath="no" />
       </Component>
     </ComponentGroup>

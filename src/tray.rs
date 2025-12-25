@@ -1,6 +1,7 @@
 //! System Tray Integration Module
 //! Creates and manages the system tray icon with context menu
 
+use image::ImageFormat;
 use tray_icon::{
     menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
     TrayIconBuilder,
@@ -11,6 +12,7 @@ use tray_icon::{
 pub enum TrayEvent {
     Show,
     Settings,
+    CheckUpdates,
     Exit,
     None,
 }
@@ -18,6 +20,7 @@ pub enum TrayEvent {
 /// Menu item IDs for event matching
 pub const MENU_ID_SHOW: &str = "show";
 pub const MENU_ID_SETTINGS: &str = "settings";
+pub const MENU_ID_CHECK_UPDATES: &str = "check_updates";
 pub const MENU_ID_EXIT: &str = "exit";
 
 /// Manages the system tray icon and events
@@ -31,6 +34,7 @@ impl TrayManager {
         // Create menu items with IDs
         let show_item = MenuItem::with_id(MENU_ID_SHOW, "Show", true, None);
         let settings_item = MenuItem::with_id(MENU_ID_SETTINGS, "Settings", true, None);
+        let check_updates_item = MenuItem::with_id(MENU_ID_CHECK_UPDATES, "Check for Updates", true, None);
         let quit_item = MenuItem::with_id(MENU_ID_EXIT, "Exit", true, None);
 
         // Create the context menu
@@ -38,6 +42,8 @@ impl TrayManager {
             &show_item,
             &PredefinedMenuItem::separator(),
             &settings_item,
+            &PredefinedMenuItem::separator(),
+            &check_updates_item,
             &PredefinedMenuItem::separator(),
             &quit_item,
         ])
@@ -70,7 +76,7 @@ impl TrayManager {
             if let Some(exe_dir) = exe_path.parent() {
                 let icon_path = exe_dir.join("../installerassets/icon.png");
                 if let Ok(image_data) = std::fs::read(&icon_path) {
-                    if let Ok(icon) = tray_icon::Icon::from_png(&image_data, 32.0, 32.0) {
+                    if let Ok(icon) = Self::create_icon_from_png_data(&image_data) {
                         return Some(icon);
                     }
                 }
@@ -79,7 +85,7 @@ impl TrayManager {
 
         // Try direct path (for development)
         if let Ok(image_data) = std::fs::read("installerassets/icon.png") {
-            if let Ok(icon) = tray_icon::Icon::from_png(&image_data, 32.0, 32.0) {
+            if let Ok(icon) = Self::create_icon_from_png_data(&image_data) {
                 return Some(icon);
             }
         }
@@ -98,6 +104,16 @@ impl TrayManager {
         }
         tray_icon::Icon::from_rgba(pixels, 32, 32).ok()
     }
+
+    /// Helper function to create tray icon from PNG data
+    fn create_icon_from_png_data(data: &[u8]) -> Result<tray_icon::Icon, Box<dyn std::error::Error>> {
+        let img = image::load_from_memory_with_format(data, ImageFormat::Png)?;
+        let rgba_img = img.to_rgba8();
+        let (width, height) = rgba_img.dimensions();
+        let rgba_data = rgba_img.into_raw();
+        tray_icon::Icon::from_rgba(rgba_data, width, height)
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+    }
 }
 
 /// Check for pending menu events (non-blocking)
@@ -110,6 +126,8 @@ pub fn check_tray_event() -> TrayEvent {
             return TrayEvent::Show;
         } else if id == MENU_ID_SETTINGS {
             return TrayEvent::Settings;
+        } else if id == MENU_ID_CHECK_UPDATES {
+            return TrayEvent::CheckUpdates;
         } else if id == MENU_ID_EXIT {
             return TrayEvent::Exit;
         }

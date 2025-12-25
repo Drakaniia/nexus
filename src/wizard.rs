@@ -7,13 +7,14 @@ use std::rc::Rc;
 use std::cell::RefCell;
 
 slint::include_modules!();
+use crate::ui::{SetupWizard, WizardScreen};
 
 /// Show the setup wizard and collect user configuration
 pub fn show_wizard(config: &mut AppConfig) -> Result<(), Box<dyn Error>> {
     log::info!("Launching first-run setup wizard");
 
     // Create the wizard window
-    let wizard = SetupWizard::new()?;
+    let wizard = crate::ui::SetupWizard::new()?;
 
     // Initialize wizard state from config
     wizard.set_run_on_startup(config.startup.enabled);

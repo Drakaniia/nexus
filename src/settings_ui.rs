@@ -1,18 +1,18 @@
 use crate::config::{AppConfig};
 use crate::startup;
 use std::error::Error;
-use slint::{ComponentHandle};
+use slint::{ComponentHandle, SharedString};
 
 /// Settings window manager
 #[allow(dead_code)]
 pub struct SettingsManager {
-    pub window: crate::SettingsWindow,
+    pub window: crate::ui::SettingsWindow,
 }
 
 impl SettingsManager {
     /// Create and show the settings window
     pub fn show(config: &AppConfig, launcher_weak: slint::Weak<crate::Launcher>) -> Result<Self, Box<dyn Error>> {
-        let settings = crate::SettingsWindow::new()?;
+        let settings = crate::ui::SettingsWindow::new()?;
         
         // Load values from config
         settings.set_theme(config.appearance.theme.clone().into());
@@ -80,7 +80,7 @@ impl SettingsManager {
                 log::info!("Settings reset to defaults");
                 let default_config = AppConfig::default();
                 
-                settings.set_theme(slint::SharedString::from(default_config.appearance.theme.clone()));
+                settings.set_theme(SharedString::from(default_config.appearance.theme.as_str()));
                 settings.set_window_opacity(default_config.appearance.opacity as f32);
                 settings.set_max_results(default_config.appearance.max_results as f32);
                 settings.set_font_size(default_config.appearance.font_size as f32);
@@ -98,7 +98,7 @@ impl SettingsManager {
 
         // Handle Config Folder callback
         settings.on_open_config_folder(move || {
-            if let Some(config_dir) = AppConfig::config_dir() {
+            if let Some(config_dir) = AppConfig::config_dir(crate::single_instance::detect_portable_mode()) {
                 let _ = std::process::Command::new("explorer").arg(config_dir).spawn();
             }
         });
@@ -107,7 +107,7 @@ impl SettingsManager {
         let settings_weak = settings.as_weak();
         settings.on_check_updates(move || {
             if let Some(settings) = settings_weak.upgrade() {
-                settings.set_update_status(slint::SharedString::from("Checking for updates..."));
+                settings.set_update_status(SharedString::from("Checking for updates..."));
                 
                 let settings_weak_cb = settings_weak.clone();
                 let _ = std::thread::spawn(move || {
@@ -125,7 +125,7 @@ impl SettingsManager {
                         if let Some(settings) = settings_weak_cb.upgrade() {
                             match response {
                                 Ok(Some(info)) => {
-                                    settings.set_update_status(slint::SharedString::from(format!("New version {} available!", info.version)));
+                                    settings.set_update_status(SharedString::from(format!("New version {} available!", info.version).as_str()));
                                 }
                                 Ok(None) => {
                                     settings.set_update_status(slint::SharedString::from("Your software is up to date"));
